@@ -43,4 +43,14 @@ export class CreateInvoiceDto {
   @ValidateNested({ each: true })
   @Type(() => InvoiceServiceLineDto)
   services!: InvoiceServiceLineDto[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  paidAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

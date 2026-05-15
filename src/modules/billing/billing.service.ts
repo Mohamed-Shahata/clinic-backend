@@ -213,7 +213,9 @@ export class BillingService {
   async listSubscriptionPaymentRequests(
     status?: SubscriptionRequestStatusValue,
   ) {
-    const requests = await (this.prisma as any).subscriptionPaymentRequest.findMany({
+    const requests = await (
+      this.prisma as any
+    ).subscriptionPaymentRequest.findMany({
       where: status ? { status } : undefined,
       include: {
         clinic: true,
@@ -410,10 +412,12 @@ export class BillingService {
     // 3. Parallel notification fan-out
     const now = new Date();
 
-    const existingSubs = await (this.prisma as any).clinicSubscription.findMany({
-      where: { clinicId: { in: clinicIds } },
-      select: { clinicId: true, expiresAt: true },
-    });
+    const existingSubs = await (this.prisma as any).clinicSubscription.findMany(
+      {
+        where: { clinicId: { in: clinicIds } },
+        select: { clinicId: true, expiresAt: true },
+      },
+    );
 
     const subMap = new Map<string, Date>(
       existingSubs.map((s: any) => [s.clinicId, s.expiresAt]),
@@ -682,31 +686,40 @@ export class BillingService {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+    );
 
     // PERF-05: Run all 4 independent queries in parallel instead of sequentially
-    const [adminRow, invoices, prevInvoices, todayStats, allPatients] = await Promise.all([
-      this.prisma.$queryRaw<
-        Array<{
-          paymentMode: string | null;
-          fixedMonthlyRent: string | null;
-          adminPercentage: string | null;
-        }>
-      >`
+    const [adminRow, invoices, prevInvoices, todayStats, allPatients] =
+      await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{
+            paymentMode: string | null;
+            fixedMonthlyRent: string | null;
+            adminPercentage: string | null;
+          }>
+        >`
         SELECT cu."paymentMode"::text, cu."fixedMonthlyRent"::text, cu."adminPercentage"::text
         FROM "ClinicUser" cu
         WHERE cu."clinicId" = ${user.clinicId} AND cu.role = 'DOCTOR_ADMIN'
         LIMIT 1
       `,
-      this.prisma.$queryRaw<
-        Array<{
-          totalAmount: string;
-          createdAt: Date;
-          patientName: string | null;
-          patientId: string;
-        }>
-      >`
+        this.prisma.$queryRaw<
+          Array<{
+            totalAmount: string;
+            createdAt: Date;
+            patientName: string | null;
+            patientId: string;
+          }>
+        >`
         SELECT i."totalAmount"::text, i."createdAt", p."fullName" AS "patientName", i."patientId"
         FROM "Invoice" i
         LEFT JOIN "Appointment" a ON a.id = i."appointmentId"
@@ -720,7 +733,7 @@ export class BillingService {
           AND i."createdAt" < ${startOfNextMonth}
         ORDER BY i."createdAt" DESC
       `,
-      this.prisma.$queryRaw<Array<{ totalAmount: string }>>`
+        this.prisma.$queryRaw<Array<{ totalAmount: string }>>`
         SELECT i."totalAmount"::text
         FROM "Invoice" i
         LEFT JOIN "Appointment" a ON a.id = i."appointmentId"
@@ -732,14 +745,14 @@ export class BillingService {
           AND i."createdAt" >= ${startOfPrevMonth}
           AND i."createdAt" < ${startOfMonth}
       `,
-      this.prisma.$queryRaw<
-        Array<{
-          total: bigint;
-          completed: bigint;
-          inQueue: bigint;
-          inProgress: bigint;
-        }>
-      >`
+        this.prisma.$queryRaw<
+          Array<{
+            total: bigint;
+            completed: bigint;
+            inQueue: bigint;
+            inProgress: bigint;
+          }>
+        >`
         SELECT
           COUNT(*) AS total,
           COUNT(*) FILTER (WHERE status = 'COMPLETED') AS completed,
@@ -751,12 +764,12 @@ export class BillingService {
           AND "startsAt" >= ${startOfDay}
           AND "startsAt" < ${endOfDay}
       `,
-      this.prisma.$queryRaw<Array<{ count: bigint }>>`
+        this.prisma.$queryRaw<Array<{ count: bigint }>>`
         SELECT COUNT(DISTINCT "patientId") AS count
         FROM "Appointment"
         WHERE "clinicId" = ${user.clinicId} AND "doctorId" = ${user.userId}
       `,
-    ]);
+      ]);
 
     const policy = adminRow[0];
     const adminPolicy = policy?.paymentMode ?? null;
@@ -873,16 +886,27 @@ export class BillingService {
       (sum, line) => sum + Number(line.amount || 0),
       0,
     );
+    const paidAmount = Math.min(
+      Number(dto.paidAmount ?? totalAmount),
+      totalAmount,
+    );
+    const status =
+      paidAmount >= totalAmount
+        ? "PAID"
+        : paidAmount > 0
+          ? "PARTIAL"
+          : "UNPAID";
     const services = JSON.stringify(dto.services);
+    const notes = dto.notes ?? null;
 
     const rows = await this.prisma.$queryRaw<InvoiceRow[]>`
       INSERT INTO "Invoice" (
         "id", "clinicId", "patientId", "appointmentId", "issuedById",
-        "totalAmount", "paymentMethod", "status", "services"
+        "totalAmount", "paidAmount", "paymentMethod", "status", "notes", "services", "updatedAt"
       )
       VALUES (
         ${id}, ${user.clinicId}, ${dto.patientId}, ${dto.appointmentId ?? null}, ${user.userId},
-        ${totalAmount}, ${dto.paymentMethod}, 'PAID', ${services}::jsonb
+        ${totalAmount}, ${paidAmount}, ${dto.paymentMethod}, ${status}, ${notes}, ${services}::jsonb, NOW()
       )
       RETURNING *
     `;

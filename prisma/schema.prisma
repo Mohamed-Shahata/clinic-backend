@@ -64,6 +64,7 @@ model Clinic {
   installmentPlans      InstallmentPlan[]
   staffSalaries         StaffSalary[]
   salaryPayments        SalaryPayment[]
+  serviceCatalog        ServiceCatalog[]
 }
 
 model User {
@@ -311,10 +312,13 @@ model Invoice {
   appointmentId String?
   issuedById    String
   totalAmount   Decimal  @db.Decimal(12, 2)
+  paidAmount    Decimal  @db.Decimal(12, 2) @default(0)
   paymentMethod String
   status        String   @default("PAID")
+  notes         String?
   services      Json
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
@@ -432,4 +436,22 @@ model SalaryPayment {
 
   @@index([salaryId, paidAt])
   @@index([clinicId])
+}
+
+// ── Service Catalog (كتالوج الخدمات) ──────────────────────────────────────
+
+model ServiceCatalog {
+  id        String   @id @default(cuid())
+  clinicId  String
+  name      String
+  price     Decimal  @db.Decimal(12, 2)
+  category  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, isActive])
+  @@index([clinicId, name])
 }

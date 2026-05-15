@@ -9,8 +9,13 @@ import { PrismaService } from "../../core/database/prisma.service";
 export class SalariesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async setSalary(clinicId: string, clinicUserId: string, monthlyAmount: number) {
-    if (monthlyAmount <= 0) throw new BadRequestException("monthlyAmount must be > 0");
+  async setSalary(
+    clinicId: string,
+    clinicUserId: string,
+    monthlyAmount: number,
+  ) {
+    if (monthlyAmount <= 0)
+      throw new BadRequestException("monthlyAmount must be > 0");
 
     await this.prisma.staffSalary.updateMany({
       where: { clinicId, clinicUserId, isActive: true },
@@ -18,7 +23,13 @@ export class SalariesService {
     });
 
     return this.prisma.staffSalary.create({
-      data: { clinicId, clinicUserId, monthlyAmount, effectiveFrom: new Date(), isActive: true },
+      data: {
+        clinicId,
+        clinicUserId,
+        monthlyAmount,
+        effectiveFrom: new Date(),
+        isActive: true,
+      },
     });
   }
 
@@ -93,7 +104,13 @@ export class SalariesService {
     if (amount <= 0) throw new BadRequestException("amount must be > 0");
 
     return this.prisma.salaryPayment.create({
-      data: { salaryId, clinicId, amount, paidById: doctorId, note: note ?? null },
+      data: {
+        salaryId,
+        clinicId,
+        amount,
+        paidById: doctorId,
+        note: note ?? null,
+      },
     });
   }
 
