@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Patch } from "@nestjs/common";
+import { Body, Controller, Get, Post, Patch, UseGuards } from "@nestjs/common";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { CurrentUser } from "./decorators/current-user.decorator";
 import { Public } from "./decorators/public.decorator";
 import { LoginDto } from "./dto/login.dto";
@@ -17,6 +18,8 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ login: { ttl: 60_000, limit: 5 } })
   @Post("login")
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);

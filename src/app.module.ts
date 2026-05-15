@@ -1,7 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { APP_GUARD } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { CacheModule } from "@nestjs/cache-manager";
 import { AuthModule } from "./core/auth/auth.module";
 import { PrismaModule } from "./core/database/prisma.module";
@@ -23,10 +22,8 @@ import { NotificationsModule } from "./modules/notifications/notifications.modul
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([
-      { name: "short", ttl: 1000, limit: 200 }, // Increased for normal navigation and polling
-      { name: "medium", ttl: 10_000, limit: 500 }, // Increased for dashboard bulk calls
-      { name: "login", ttl: 60_000, limit: 5 }, // Brute-force protection
-      { name: "otp", ttl: 60_000, limit: 3 }, // OTP abuse protection
+      { name: "login", ttl: 60_000, limit: 5 },
+      { name: "otp", ttl: 60_000, limit: 3 },
     ]),
     CacheModule.register({ isGlobal: true, ttl: 0 }),
     PrismaModule,
@@ -45,6 +42,6 @@ import { NotificationsModule } from "./modules/notifications/notifications.modul
     NotificationsModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [],
 })
 export class AppModule {}

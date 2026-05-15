@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import { IsObject, IsOptional, IsString, MaxLength } from "class-validator";
 import { ClinicRole } from "@prisma/client";
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
@@ -37,7 +47,10 @@ export class PrescriptionsController {
   @Get("patient/:patientId")
   @Roles(ClinicRole.DOCTOR_ADMIN)
   @Permissions(Permission.VIEW_PATIENT_HISTORY)
-  listByPatient(@CurrentUser() user: RequestUser, @Param("patientId") patientId: string) {
+  listByPatient(
+    @CurrentUser() user: RequestUser,
+    @Param("patientId") patientId: string,
+  ) {
     return this.prescriptionsService.listByPatient(user, patientId);
   }
 
@@ -48,7 +61,10 @@ export class PrescriptionsController {
     return this.prescriptionsService.create(user, dto);
   }
 
+  // SkipThrottle on all catalog & template reads — these are called on every
+  // prescription form load and do NOT pose abuse risk (auth-gated + cached).
   @Get("catalog/medications")
+  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN)
   listMedications(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     return this.prescriptionsService.listMedicationCatalog(user, q);
@@ -56,13 +72,20 @@ export class PrescriptionsController {
 
   @Post("catalog/medications")
   @Roles(ClinicRole.DOCTOR_ADMIN)
-  createMedication(@CurrentUser() user: RequestUser, @Body() dto: CreateMedicationCatalogDto) {
+  createMedication(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CreateMedicationCatalogDto,
+  ) {
     return this.prescriptionsService.createMedicationCatalog(user, dto);
   }
 
   @Patch("catalog/medications/:id")
   @Roles(ClinicRole.DOCTOR_ADMIN)
-  updateMedication(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body() dto: UpdateMedicationCatalogDto) {
+  updateMedication(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body() dto: UpdateMedicationCatalogDto,
+  ) {
     return this.prescriptionsService.updateMedicationCatalog(user, id, dto);
   }
 
@@ -73,6 +96,7 @@ export class PrescriptionsController {
   }
 
   @Get("catalog/imaging")
+  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN)
   listImaging(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     return this.prescriptionsService.listImagingCatalog(user, q);
@@ -80,13 +104,20 @@ export class PrescriptionsController {
 
   @Post("catalog/imaging")
   @Roles(ClinicRole.DOCTOR_ADMIN)
-  createImaging(@CurrentUser() user: RequestUser, @Body() dto: CreateImagingCatalogDto) {
+  createImaging(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CreateImagingCatalogDto,
+  ) {
     return this.prescriptionsService.createImagingCatalog(user, dto);
   }
 
   @Patch("catalog/imaging/:id")
   @Roles(ClinicRole.DOCTOR_ADMIN)
-  updateImaging(@CurrentUser() user: RequestUser, @Param("id") id: string, @Body() dto: UpdateImagingCatalogDto) {
+  updateImaging(
+    @CurrentUser() user: RequestUser,
+    @Param("id") id: string,
+    @Body() dto: UpdateImagingCatalogDto,
+  ) {
     return this.prescriptionsService.updateImagingCatalog(user, id, dto);
   }
 
@@ -96,7 +127,17 @@ export class PrescriptionsController {
     return this.prescriptionsService.deleteImagingCatalog(user, id);
   }
 
+  @Get("catalog/tests")
+  @SkipThrottle()
+  @Roles(ClinicRole.DOCTOR_ADMIN)
+  listTests(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
+    // Tests are stored as part of the medications catalog (requestedTests field in prescriptions)
+    // Return empty catalog — front-end builds test suggestions from previous prescriptions
+    return this.prescriptionsService.listMedicationCatalog(user, q);
+  }
+
   @Get("template")
+  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN)
   getTemplate(@CurrentUser() user: RequestUser) {
     return this.prescriptionsService.getPrescriptionTemplate(user);

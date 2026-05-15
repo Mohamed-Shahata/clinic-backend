@@ -71,7 +71,9 @@ export class PatientsController {
   @Post(":patientId/attachments")
   @Roles(ClinicRole.DOCTOR_ADMIN)
   @Permissions(Permission.VIEW_PATIENT_HISTORY)
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
   async addAttachment(
     @CurrentUser() user: RequestUser,
     @Param("patientId") patientId: string,
@@ -79,15 +81,27 @@ export class PatientsController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException("No file uploaded");
+    // Max 5 files per patient
+    const fileCount = await this.patientsService.countAttachments(
+      user.clinicId!,
+      patientId,
+    );
+    if (fileCount >= 5)
+      throw new BadRequestException("Max 5 files per patient");
     const url = await this.uploadService.uploadPatientFile(
       file.buffer,
       file.mimetype,
       `${patientId}-${user.userId}`,
     );
-    return this.patientsService.addAttachment(user, patientId, {
-      url,
-      fileName: file.originalname,
-      mimeType: file.mimetype,
-    }, appointmentId);
+    return this.patientsService.addAttachment(
+      user,
+      patientId,
+      {
+        url,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+      },
+      appointmentId,
+    );
   }
 }

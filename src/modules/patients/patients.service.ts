@@ -114,7 +114,7 @@ export class PatientsService {
               take: 50,
               select: {
                 id: true,
-                appointmentId: true,   // ← was missing from the original include
+                appointmentId: true, // ← was missing from the original include
                 storageKey: true,
                 fileName: true,
                 mimeType: true,
@@ -138,6 +138,12 @@ export class PatientsService {
       : [];
 
     return { ...patient, attachments };
+  }
+
+  async countAttachments(clinicId: string, patientId: string): Promise<number> {
+    return this.prisma.patientAttachment.count({
+      where: { clinicId, patientId },
+    });
   }
 
   async addAttachment(
@@ -215,7 +221,9 @@ export class PatientsService {
       .filter(Boolean);
 
     // Pre-filter in the DB using the first (longest) token — reduces the JS set drastically
-    const primaryToken = [...queryTokens].sort((a, b) => b.length - a.length)[0];
+    const primaryToken = [...queryTokens].sort(
+      (a, b) => b.length - a.length,
+    )[0];
     const candidates = await this.prisma.patient.findMany({
       where: {
         clinicId,
