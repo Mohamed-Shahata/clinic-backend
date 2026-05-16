@@ -6,16 +6,6 @@ import { RequestUser } from "../types/request-user.type";
 import { JwtPayload } from "../types/jwt-payload.type";
 import { AuthSessionService } from "../auth-session.service";
 
-/**
- * HIGH-01: No DB hit on every request.
- * Trust the signed JWT payload — it contains userId, clinicId, role, isSuperAdmin.
- * Only re-validate from DB on sensitive operations (password change, etc.) using
- * a dedicated guard on those specific routes.
- *
- * LOGIC-04: Clinic active-status is checked at login time and embedded in the JWT.
- * For real-time deactivation enforcement, add a lightweight Redis-based blocklist
- * checked here, or reduce JWT TTL (already done in auth.module.ts: 15m).
- */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
@@ -33,12 +23,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!payload.sub) {
       throw new UnauthorizedException("Invalid token");
     }
-    if (
-      await this.authSessionService.isAccessTokenRevoked(payload.jti) ||
-      await this.authSessionService.isClinicRevoked(payload.clinicId)
-    ) {
-      throw new UnauthorizedException("Token revoked");
+
+    // Check in parallel for speed
+    const [accessRevoked, clinicRevoked, userRevoked] = await Promise.all([
+      this.authSessionService.isAccessTokenRevoked(payload.jti),
+      this.authSessionService.isClinicRevoked(payload.clinicId),
+      this.authSessionService.isUserRevoked(payload.sub),
+    ]);
+
+    if (accessRevoked || clinicRevoked || userRevoked) {
+      throw new UnauthorizedException("Session revoked");
     }
+
     return {
       userId: payload.sub,
       jti: payload.jti,

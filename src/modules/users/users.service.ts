@@ -11,10 +11,14 @@ import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { UpdateDoctorPaymentDto } from "./dto/update-doctor-payment.dto";
 import { DOCTOR_ROLE } from "../../core/auth/rbac/role-permissions";
 import { normalizePhone } from "../../core/auth/phone.util";
+import { AuthSessionService } from "../../core/auth/auth-session.service";
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authSessionService: AuthSessionService,
+  ) {}
 
   async listPlatformDirectory(filters: {
     role?: ClinicRole;
@@ -245,6 +249,14 @@ export class UsersService {
       include: { user: true },
     });
 
+    // Force logout the user immediately when deactivated,
+    // or clear the revocation flag when re-activated.
+    if (isActive) {
+      await this.authSessionService.clearUserRevocation(userId);
+    } else {
+      await this.authSessionService.revokeUserSessions(userId);
+    }
+
     await this.prisma.auditLog.create({
       data: {
         clinicId,
@@ -332,9 +344,7 @@ export class UsersService {
       !staff ||
       ![ClinicRole.DOCTOR_ADMIN, DOCTOR_ROLE].includes(staff.role)
     ) {
-      throw new ConflictException(
-        "Doctor does not belong to this clinic",
-      );
+      throw new ConflictException("Doctor does not belong to this clinic");
     }
     await this.prisma.clinicUser.update({
       where: { id: staff.id },
@@ -383,9 +393,7 @@ export class UsersService {
       where: { id: userId },
       data: {
         ...(dto.fullName ? { fullName: dto.fullName.trim() } : {}),
-        ...(dto.phone !== undefined
-          ? { phone: normalizedPhone }
-          : {}),
+        ...(dto.phone !== undefined ? { phone: normalizedPhone } : {}),
         ...(dto.avatarUrl !== undefined
           ? { avatarUrl: dto.avatarUrl?.trim() || null }
           : {}),
