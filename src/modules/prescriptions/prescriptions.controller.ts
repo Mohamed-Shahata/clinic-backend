@@ -8,7 +8,6 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import { SkipThrottle } from "@nestjs/throttler";
 import { IsObject, IsOptional, IsString, MaxLength } from "class-validator";
 import { ClinicRole } from "@prisma/client";
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
@@ -64,7 +63,6 @@ export class PrescriptionsController {
   // SkipThrottle on all catalog & template reads — these are called on every
   // prescription form load and do NOT pose abuse risk (auth-gated + cached).
   @Get("catalog/medications")
-  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN)
   listMedications(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     return this.prescriptionsService.listMedicationCatalog(user, q);
@@ -96,7 +94,6 @@ export class PrescriptionsController {
   }
 
   @Get("catalog/imaging")
-  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN)
   listImaging(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     return this.prescriptionsService.listImagingCatalog(user, q);
@@ -128,7 +125,6 @@ export class PrescriptionsController {
   }
 
   @Get("catalog/tests")
-  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN)
   listTests(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     // Tests are stored as part of the medications catalog (requestedTests field in prescriptions)
@@ -137,7 +133,6 @@ export class PrescriptionsController {
   }
 
   @Get("template")
-  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN)
   getTemplate(@CurrentUser() user: RequestUser) {
     return this.prescriptionsService.getPrescriptionTemplate(user);

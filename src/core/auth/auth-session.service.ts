@@ -6,7 +6,7 @@ import { JwtService } from "@nestjs/jwt";
 import { JwtPayload } from "./types/jwt-payload.type";
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-const REFRESH_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — rolling refresh keeps session alive indefinitely
 
 type RefreshSession = {
   userId: string;

@@ -8,7 +8,6 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { SkipThrottle } from "@nestjs/throttler";
 import { ClinicRole } from "@prisma/client";
 import { RolesGuard } from "../../core/auth/guards/roles.guard";
 import { Roles } from "../../core/auth/decorators/roles.decorator";
@@ -23,7 +22,6 @@ export class ServicesController {
 
   // Both roles can view the service catalog (needed when creating invoices)
   @Get()
-  @SkipThrottle()
   @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
   findAll(@CurrentUser() u: RequestUser) {
     return this.svc.findAll(u.clinicId!);

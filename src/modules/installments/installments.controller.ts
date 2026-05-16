@@ -9,7 +9,6 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { SkipThrottle } from "@nestjs/throttler";
 import { ClinicRole } from "@prisma/client";
 import { RolesGuard } from "../../core/auth/guards/roles.guard";
 import { Roles } from "../../core/auth/decorators/roles.decorator";
@@ -35,7 +34,6 @@ export class InstallmentsController {
   }
 
   @Get()
-  @SkipThrottle()
   findAll(
     @CurrentUser() user: RequestUser,
     @Query("patientId") patientId?: string,
@@ -46,7 +44,6 @@ export class InstallmentsController {
   }
 
   @Get(":id")
-  @SkipThrottle()
   findOne(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     if (!user.clinicId) throw new ForbiddenException("No clinic context");
     return this.svc.findOne(user.clinicId, id);
