@@ -2,11 +2,14 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../../core/database/prisma.service";
 
 @Injectable()
 export class SalariesService {
+  private readonly logger = new Logger(SalariesService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async setSalary(
@@ -16,6 +19,15 @@ export class SalariesService {
   ) {
     if (monthlyAmount <= 0)
       throw new BadRequestException("monthlyAmount must be > 0");
+
+    // ── تحقق إن الـ clinicUser موجود فعلاً في هذه العيادة ──────────────
+    const cu = await this.prisma.clinicUser.findFirst({
+      where: { id: clinicUserId, clinicId },
+    });
+    if (!cu)
+      throw new NotFoundException(
+        `ClinicUser ${clinicUserId} not found in clinic ${clinicId}`,
+      );
 
     await this.prisma.staffSalary.updateMany({
       where: { clinicId, clinicUserId, isActive: true },
@@ -34,7 +46,7 @@ export class SalariesService {
   }
 
   async getSalaryOverview(clinicId: string) {
-    // Get receptionists
+    // ── جلب كل السكيرتيرات النشطات في العيادة ──────────────────────────
     const receptionists = await this.prisma.clinicUser.findMany({
       where: { clinicId, role: "RECEPTIONIST", isActive: true },
       include: {
@@ -42,7 +54,12 @@ export class SalariesService {
       },
     });
 
-    // Get active salaries for each
+    this.logger.debug(
+      `getSalaryOverview: clinicId=${clinicId} → found ${receptionists.length} receptionists`,
+    );
+
+    if (receptionists.length === 0) return [];
+
     const results = await Promise.all(
       receptionists.map(async (cu) => {
         const salary = await this.prisma.staffSalary.findFirst({
@@ -73,7 +90,7 @@ export class SalariesService {
         }
 
         return {
-          clinicUserId: cu.id,
+          clinicUserId: cu.id, // ← ده الـ ClinicUser.id مش User.id
           userId: cu.userId,
           fullName: cu.user.fullName,
           monthlyAmount: salary ? Number(salary.monthlyAmount) : null,

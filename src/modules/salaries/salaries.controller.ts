@@ -1,11 +1,14 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { ClinicRole } from "@prisma/client";
 import { RolesGuard } from "../../core/auth/guards/roles.guard";
+import { Roles } from "../../core/auth/decorators/roles.decorator";
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
 import { RequestUser } from "../../core/auth/types/request-user.type";
 import { SalariesService } from "./salaries.service";
 
 @Controller("salaries")
 @UseGuards(RolesGuard)
+@Roles(ClinicRole.DOCTOR_ADMIN) // ← كل الـ endpoints محمية بـ DOCTOR_ADMIN
 export class SalariesController {
   constructor(private readonly svc: SalariesService) {}
 
@@ -17,7 +20,11 @@ export class SalariesController {
     @Body("monthlyAmount") monthlyAmount: number,
   ) {
     if (!user.clinicId) throw new Error("No clinic");
-    return this.svc.setSalary(user.clinicId, clinicUserId, Number(monthlyAmount));
+    return this.svc.setSalary(
+      user.clinicId,
+      clinicUserId,
+      Number(monthlyAmount),
+    );
   }
 
   /** overview الرواتب للدكتور */
@@ -36,7 +43,13 @@ export class SalariesController {
     @Body("note") note?: string,
   ) {
     if (!user.clinicId) throw new Error("No clinic");
-    return this.svc.paysalary(user.clinicId, user.userId, salaryId, Number(amount), note);
+    return this.svc.paysalary(
+      user.clinicId,
+      user.userId,
+      salaryId,
+      Number(amount),
+      note,
+    );
   }
 
   /** تاريخ صرف */
