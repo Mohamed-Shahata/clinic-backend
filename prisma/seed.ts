@@ -1,60 +1,73 @@
 /**
- * prisma/seed.ts
- * ─────────────────────────────────────────────────────────────────────────────
- * شامل seed يغطي كل سيناريوهات النظام:
+ * prisma/seed.ts — Full Clinic CMS Seed
+ * ─────────────────────────────────────
+ * يغطي كل سيناريوهات السيستم:
+ *  1. Super-admin
+ *  2. خطط الاشتراك
+ *  3. 3 عيادات (نشطة، منتهية، موقوفة)
+ *  4. دكاتره وسيكريترة (نشطين وغير نشطين)
+ *  5. 60 مريض بحالات متنوعة
+ *  6. 200+ موعد بكل الحالات
+ *  7. روشتات وأدوية
+ *  8. فواتير بطرق دفع مختلفة
+ *  9. خطط تقسيط مع دفعات
+ * 10. كتالوج خدمات وأدوية وأشعة
+ * 11. رواتب موظفين
+ * 12. طلبات اشتراك
+ * 13. إشعارات
+ * 14. شكاوي
+ * 15. تقييمات المنصة
+ * 16. Audit logs
  *
- *  1. Super-admin (platform owner)
- *  2. خطط الاشتراك (monthly / 6-months / yearly)
- *  3. عيادتين منفصلتين بإعدادات مختلفة
- *     ├── عيادة Alpha  ← اشتراك نشط، دفع نسبة مئوية، مع receptionist
- *     └── عيادة Beta   ← اشتراك منتهي، دفع إيجار ثابت، بدون receptionist
- *  4. مرضى بحالات متنوعة (ملاحظات طبية / بدون / تاريخ ميلاد / ملفات)
- *  5. مواعيد بكل الحالات الممكنة
- *     (IN_QUEUE / IN_PROGRESS / COMPLETED / CANCELLED)
- *  6. روشتات بدوا / بدون أدوية وتحاليل وأشعة
- *  7. فواتير بطرق دفع مختلفة (cash / card / insurance)
- *  8. طلبات اشتراك (pending / approved / rejected)
- *  9. كتالوج أدوية وأشعة مخصصة لكل دكتور
- * 10. قوالب روشتات
- * 11. إشعارات (مقروءة / غير مقروءة)
- * 12. Audit logs لكل الأحداث
- * ─────────────────────────────────────────────────────────────────────────────
  * تشغيل: npx prisma db seed
  * كلمة السر الموحدة: Password123!
  */
 
 import "dotenv/config";
-import { PrismaClient, AppointmentStatus, ClinicRole } from "@prisma/client";
+import {
+  PrismaClient,
+  AppointmentStatus,
+  ClinicRole,
+  ComplaintCategory,
+  ComplaintStatus,
+  InstallmentStatus,
+} from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
-const PASSWORD = "Password123!";
+const PWD = "Password123!";
+const ph = () => hash(PWD, 10);
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-const pwd = () => hash(PASSWORD, 10);
-
-/** يبني تاريخ نسبي من اليوم */
+function daysAgo(n: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  d.setSeconds(0, 0);
+  return d;
+}
 function daysFromNow(n: number): Date {
   const d = new Date();
   d.setDate(d.getDate() + n);
   d.setSeconds(0, 0);
   return d;
 }
-
-/** وقت محدد اليوم */
-function todayAt(hour: number, minute = 0): Date {
+function todayAt(h: number, m = 0): Date {
   const d = new Date();
-  d.setHours(hour, minute, 0, 0);
+  d.setHours(h, m, 0, 0);
   return d;
 }
-
-/** كود مريض تسلسلي */
-function patientCode(n: number) {
-  return `P${String(n).padStart(4, "0")}`;
+function pastAt(daysBack: number, h: number, m = 0): Date {
+  const d = daysAgo(daysBack);
+  d.setHours(h, m, 0, 0);
+  return d;
 }
+const pc = (n: number) => `P${String(n).padStart(4, "0")}`;
+const rand = (arr: any[]) => arr[Math.floor(Math.random() * arr.length)];
+const randInt = (min: number, max: number) =>
+  Math.floor(Math.random() * (max - min + 1)) + min;
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log("🌱  بدء الـ seed …\n");
@@ -64,11 +77,11 @@ async function main() {
   // ══════════════════════════════════════════════════════════════════════════
   const superAdmin = await prisma.user.upsert({
     where: { email: "super@demo.test" },
-    update: { fullName: "Platform Super Admin", isSuperAdmin: true },
+    update: { isSuperAdmin: true },
     create: {
       email: "super@demo.test",
-      fullName: "Platform Super Admin",
-      passwordHash: await pwd(),
+      fullName: "مدير المنصة",
+      passwordHash: await ph(),
       isSuperAdmin: true,
     },
   });
@@ -80,15 +93,8 @@ async function main() {
   const planMonthly = await (prisma as any).subscriptionPlan.upsert({
     where: { code: "MONTHLY" },
     update: {},
-    create: {
-      code: "MONTHLY",
-      name: "شهري",
-      durationDays: 30,
-      price: 299,
-      isActive: true,
-    },
+    create: { code: "MONTHLY", name: "شهري", durationDays: 30, price: 299 },
   });
-
   const planSixMonths = await (prisma as any).subscriptionPlan.upsert({
     where: { code: "SIX_MONTHS" },
     update: {},
@@ -97,43 +103,21 @@ async function main() {
       name: "نصف سنوي",
       durationDays: 180,
       price: 1499,
-      isActive: true,
     },
   });
-
   const planYearly = await (prisma as any).subscriptionPlan.upsert({
     where: { code: "YEARLY" },
     update: {},
-    create: {
-      code: "YEARLY",
-      name: "سنوي",
-      durationDays: 365,
-      price: 2499,
-      isActive: true,
-    },
+    create: { code: "YEARLY", name: "سنوي", durationDays: 365, price: 2499 },
   });
-
-  // خطة معطلة (سيناريو: خطة تم إيقافها)
-  await (prisma as any).subscriptionPlan.upsert({
-    where: { code: "LEGACY_BASIC" },
-    update: {},
-    create: {
-      code: "LEGACY_BASIC",
-      name: "أساسي (قديم)",
-      durationDays: 30,
-      price: 99,
-      isActive: false,
-    },
-  });
-
-  console.log("✅  خطط الاشتراك (4 خطط)");
+  console.log("✅  خطط الاشتراك (3)");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 3-A. عيادة Alpha ← اشتراك نشط · دفع نسبة مئوية · مع receptionist
+  // 3. عيادة Alpha — نشطة، دكتور + سيكريتيرة × 2
   // ══════════════════════════════════════════════════════════════════════════
-  const clinicAlpha = await prisma.clinic.upsert({
+  const clinicAlpha = await (prisma as any).clinic.upsert({
     where: { slug: "alpha-clinic" },
-    update: {},
+    update: { isActive: true },
     create: {
       slug: "alpha-clinic",
       name: "عيادة ألفا للباطنة",
@@ -141,1044 +125,1086 @@ async function main() {
       timezone: "Africa/Cairo",
       defaultLocale: "ar",
       workingHours: {
-        sat: { open: "09:00", close: "21:00", enabled: true },
-        sun: { open: "09:00", close: "21:00", enabled: true },
-        mon: { open: "09:00", close: "21:00", enabled: true },
-        tue: { open: "09:00", close: "21:00", enabled: true },
-        wed: { open: "09:00", close: "21:00", enabled: true },
-        thu: { open: "09:00", close: "15:00", enabled: true },
-        fri: { open: "00:00", close: "00:00", enabled: false },
+        sat: "9-17",
+        sun: "9-17",
+        mon: "9-17",
+        tue: "9-17",
+        wed: "9-17",
       },
     },
   });
 
-  // اشتراك نشط لعيادة Alpha
+  const drAlpha = await prisma.user.upsert({
+    where: { email: "dr.alpha@demo.test" },
+    update: {},
+    create: {
+      email: "dr.alpha@demo.test",
+      phone: "+201001111111",
+      fullName: "د. أحمد محمود السيد",
+      passwordHash: await ph(),
+    },
+  });
+
+  const recAlpha1 = await prisma.user.upsert({
+    where: { email: "rec1.alpha@demo.test" },
+    update: {},
+    create: {
+      email: "rec1.alpha@demo.test",
+      phone: "+201002222222",
+      fullName: "سارة إبراهيم عبدالله",
+      passwordHash: await ph(),
+    },
+  });
+
+  const recAlpha2 = await prisma.user.upsert({
+    where: { email: "rec2.alpha@demo.test" },
+    update: {},
+    create: {
+      email: "rec2.alpha@demo.test",
+      phone: "+201003333333",
+      fullName: "نورا خالد حسن",
+      passwordHash: await ph(),
+    },
+  });
+
+  // ClinicUsers
+  await (prisma as any).clinicUser.upsert({
+    where: {
+      clinicId_userId: { clinicId: clinicAlpha.id, userId: drAlpha.id },
+    },
+    update: {},
+    create: {
+      clinicId: clinicAlpha.id,
+      userId: drAlpha.id,
+      role: ClinicRole.DOCTOR_ADMIN,
+      specialty: "الباطنة والغدد الصماء",
+      consultationFee: 300,
+      followUpFee: 150,
+      paymentMode: "PERCENTAGE",
+      adminPercentage: 40,
+      subscriptionPeriod: "YEARLY",
+      isActive: true,
+    },
+  });
+  const cuRec1 = await (prisma as any).clinicUser.upsert({
+    where: {
+      clinicId_userId: { clinicId: clinicAlpha.id, userId: recAlpha1.id },
+    },
+    update: {},
+    create: {
+      clinicId: clinicAlpha.id,
+      userId: recAlpha1.id,
+      role: ClinicRole.RECEPTIONIST,
+      isActive: true,
+    },
+  });
+  // Deactivated receptionist scenario
+  await (prisma as any).clinicUser.upsert({
+    where: {
+      clinicId_userId: { clinicId: clinicAlpha.id, userId: recAlpha2.id },
+    },
+    update: {},
+    create: {
+      clinicId: clinicAlpha.id,
+      userId: recAlpha2.id,
+      role: ClinicRole.RECEPTIONIST,
+      isActive: false,
+    },
+  });
+
+  // Subscription — active
   await (prisma as any).clinicSubscription.upsert({
     where: { clinicId: clinicAlpha.id },
     update: {},
     create: {
       clinicId: clinicAlpha.id,
       planId: planYearly.id,
-      startsAt: daysFromNow(-60),
+      startsAt: daysAgo(60),
       expiresAt: daysFromNow(305),
       status: "ACTIVE",
     },
   });
 
-  // دكتور Alpha (DOCTOR_ADMIN) — دفع بنسبة مئوية 20%
-  const userDrAlpha = await prisma.user.upsert({
-    where: { email: "dr.alpha@demo.test" },
-    update: {},
-    create: {
-      email: "dr.alpha@demo.test",
-      fullName: "د. أحمد سالم",
-      passwordHash: await pwd(),
-    },
-  });
-
-  await prisma.clinicUser.upsert({
-    where: {
-      clinicId_userId: { clinicId: clinicAlpha.id, userId: userDrAlpha.id },
-    },
-    update: {},
-    create: {
-      clinicId: clinicAlpha.id,
-      userId: userDrAlpha.id,
-      role: ClinicRole.DOCTOR_ADMIN,
-      specialty: "طب باطني",
-      paymentMode: "PERCENTAGE",
-      adminPercentage: 20,
-      isActive: true,
-    },
-  });
-
-  // Receptionist لعيادة Alpha
-  const userRecAlpha = await prisma.user.upsert({
-    where: { email: "rec.alpha@demo.test" },
-    update: {},
-    create: {
-      email: "rec.alpha@demo.test",
-      phone: "+201011112222",
-      fullName: "مي عبد الله",
-      passwordHash: await pwd(),
-    },
-  });
-
-  await prisma.clinicUser.upsert({
-    where: {
-      clinicId_userId: { clinicId: clinicAlpha.id, userId: userRecAlpha.id },
-    },
-    update: {},
-    create: {
-      clinicId: clinicAlpha.id,
-      userId: userRecAlpha.id,
-      role: ClinicRole.RECEPTIONIST,
-      isActive: true,
-    },
-  });
-
-  // Receptionist معطل (سيناريو: موظف مغادر)
-  const userRecAlphaOld = await prisma.user.upsert({
-    where: { email: "rec.alpha.old@demo.test" },
-    update: {},
-    create: {
-      email: "rec.alpha.old@demo.test",
-      fullName: "سارة محمود",
-      passwordHash: await pwd(),
-    },
-  });
-
-  await prisma.clinicUser.upsert({
-    where: {
-      clinicId_userId: { clinicId: clinicAlpha.id, userId: userRecAlphaOld.id },
-    },
-    update: {},
-    create: {
-      clinicId: clinicAlpha.id,
-      userId: userRecAlphaOld.id,
-      role: ClinicRole.RECEPTIONIST,
-      isActive: false, // موظف سابق — معطل
-    },
-  });
-
-  console.log(`✅  عيادة Alpha → ${clinicAlpha.name} (اشتراك نشط · نسبة 20%)`);
+  console.log(`✅  عيادة Alpha → د. أحمد`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 3-B. عيادة Beta ← اشتراك منتهي · دفع إيجار ثابت · بدون receptionist
+  // 4. عيادة Beta — اشتراك منتهي
   // ══════════════════════════════════════════════════════════════════════════
-  const clinicBeta = await prisma.clinic.upsert({
+  const clinicBeta = await (prisma as any).clinic.upsert({
     where: { slug: "beta-clinic" },
     update: {},
     create: {
       slug: "beta-clinic",
-      name: "عيادة بيتا للأطفال",
+      name: "عيادة بيتا لطب الأسنان",
       isActive: true,
       timezone: "Africa/Cairo",
       defaultLocale: "ar",
-      workingHours: {
-        sat: { open: "10:00", close: "18:00", enabled: true },
-        sun: { open: "10:00", close: "18:00", enabled: true },
-        mon: { open: "10:00", close: "18:00", enabled: true },
-        tue: { open: "10:00", close: "18:00", enabled: true },
-        wed: { open: "00:00", close: "00:00", enabled: false },
-        thu: { open: "10:00", close: "18:00", enabled: true },
-        fri: { open: "00:00", close: "00:00", enabled: false },
-      },
     },
   });
 
-  // اشتراك منتهي لعيادة Beta (سيناريو: لم يجدد)
+  const drBeta = await prisma.user.upsert({
+    where: { email: "dr.beta@demo.test" },
+    update: {},
+    create: {
+      email: "dr.beta@demo.test",
+      phone: "+201004444444",
+      fullName: "د. منى عبدالرحمن فؤاد",
+      passwordHash: await ph(),
+    },
+  });
+
+  const recBeta = await prisma.user.upsert({
+    where: { email: "rec.beta@demo.test" },
+    update: {},
+    create: {
+      email: "rec.beta@demo.test",
+      phone: "+201005555555",
+      fullName: "ريم حسام الدين",
+      passwordHash: await ph(),
+    },
+  });
+
+  await (prisma as any).clinicUser.upsert({
+    where: { clinicId_userId: { clinicId: clinicBeta.id, userId: drBeta.id } },
+    update: {},
+    create: {
+      clinicId: clinicBeta.id,
+      userId: drBeta.id,
+      role: ClinicRole.DOCTOR_ADMIN,
+      specialty: "طب وجراحة الفم والأسنان",
+      consultationFee: 500,
+      followUpFee: 200,
+      paymentMode: "FIXED_RENT",
+      fixedMonthlyRent: 5000,
+      subscriptionPeriod: "MONTHLY",
+      isActive: true,
+    },
+  });
+  await (prisma as any).clinicUser.upsert({
+    where: { clinicId_userId: { clinicId: clinicBeta.id, userId: recBeta.id } },
+    update: {},
+    create: {
+      clinicId: clinicBeta.id,
+      userId: recBeta.id,
+      role: ClinicRole.RECEPTIONIST,
+      isActive: true,
+    },
+  });
+
+  // Expired subscription
   await (prisma as any).clinicSubscription.upsert({
     where: { clinicId: clinicBeta.id },
     update: {},
     create: {
       clinicId: clinicBeta.id,
       planId: planMonthly.id,
-      startsAt: daysFromNow(-60),
-      expiresAt: daysFromNow(-1), // انتهى البارحة
+      startsAt: daysAgo(40),
+      expiresAt: daysAgo(10),
       status: "EXPIRED",
     },
   });
+  console.log(`✅  عيادة Beta → د. منى`);
 
-  // دكتور Beta (DOCTOR_ADMIN) — دفع إيجار ثابت 3000 شهرياً
-  const userDrBeta = await prisma.user.upsert({
-    where: { email: "dr.beta@demo.test" },
+  // ══════════════════════════════════════════════════════════════════════════
+  // 5. عيادة Gamma — موقوفة (isActive: false)
+  // ══════════════════════════════════════════════════════════════════════════
+  const clinicGamma = await (prisma as any).clinic.upsert({
+    where: { slug: "gamma-clinic" },
     update: {},
     create: {
-      email: "dr.beta@demo.test",
-      phone: "+201099998888",
-      fullName: "د. منى خالد",
-      passwordHash: await pwd(),
+      slug: "gamma-clinic",
+      name: "عيادة جاما للعيون",
+      isActive: false,
     },
   });
 
-  await prisma.clinicUser.upsert({
+  const drGamma = await prisma.user.upsert({
+    where: { email: "dr.gamma@demo.test" },
+    update: {},
+    create: {
+      email: "dr.gamma@demo.test",
+      phone: "+201006666666",
+      fullName: "د. طارق يوسف منصور",
+      passwordHash: await ph(),
+    },
+  });
+
+  await (prisma as any).clinicUser.upsert({
     where: {
-      clinicId_userId: { clinicId: clinicBeta.id, userId: userDrBeta.id },
+      clinicId_userId: { clinicId: clinicGamma.id, userId: drGamma.id },
     },
     update: {},
     create: {
-      clinicId: clinicBeta.id,
-      userId: userDrBeta.id,
+      clinicId: clinicGamma.id,
+      userId: drGamma.id,
       role: ClinicRole.DOCTOR_ADMIN,
-      specialty: "طب أطفال",
-      paymentMode: "FIXED_RENT",
-      fixedMonthlyRent: 3000,
       isActive: true,
     },
   });
+  console.log(`✅  عيادة Gamma → موقوفة`);
 
-  // عيادة Beta بدون اشتراك وبدون receptionist — دكتور لوحده
+  // ══════════════════════════════════════════════════════════════════════════
+  // 6. كتالوج الخدمات
+  // ══════════════════════════════════════════════════════════════════════════
+  const servicesAlpha = [
+    { name: "كشف باطنة", price: 300, category: "كشف" },
+    { name: "كشف متابعة", price: 150, category: "كشف" },
+    { name: "تحليل سكر صائم", price: 80, category: "تحاليل" },
+    { name: "تحليل وظائف كبد", price: 120, category: "تحاليل" },
+    { name: "تحليل وظائف كلى", price: 120, category: "تحاليل" },
+    { name: "صورة دم كاملة", price: 60, category: "تحاليل" },
+    { name: "أشعة سينية صدر", price: 150, category: "أشعة" },
+    { name: "موجات صوتية بطن", price: 250, category: "أشعة" },
+    { name: "رسم قلب", price: 100, category: "إجراء" },
+    { name: "قياس ضغط 24 ساعة", price: 400, category: "إجراء" },
+  ];
+
+  for (const s of servicesAlpha) {
+    await (prisma as any).serviceCatalog
+      .create({
+        data: { clinicId: clinicAlpha.id, ...s },
+      })
+      .catch(() => null);
+  }
+
+  const servicesBeta = [
+    { name: "كشف أسنان", price: 500, category: "كشف" },
+    { name: "تنظيف أسنان", price: 400, category: "تنظيف" },
+    { name: "حشو ضرس عادي", price: 600, category: "حشوات" },
+    { name: "حشو ضرس عصب", price: 1200, category: "حشوات" },
+    { name: "خلع ضرس عادي", price: 300, category: "خلع" },
+    { name: "خلع ضرس عقل", price: 800, category: "خلع" },
+    { name: "تركيب تاج", price: 3500, category: "تركيبات" },
+    { name: "تبييض أسنان", price: 2000, category: "تجميل" },
+    { name: "تقويم أسنان شفاف", price: 15000, category: "تقويم" },
+    { name: "زراعة أسنان", price: 12000, category: "زراعة" },
+  ];
+
+  for (const s of servicesBeta) {
+    await (prisma as any).serviceCatalog
+      .create({
+        data: { clinicId: clinicBeta.id, ...s },
+      })
+      .catch(() => null);
+  }
+  console.log("✅  كتالوج الخدمات");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 7. كتالوج الأدوية
+  // ══════════════════════════════════════════════════════════════════════════
+  const medications = [
+    {
+      name: "ميتفورمين",
+      dose: "500mg",
+      frequency: "مرتين يومياً",
+      duration: "مستمر",
+      notes: "مع الأكل",
+    },
+    {
+      name: "أملوديبين",
+      dose: "5mg",
+      frequency: "مرة يومياً",
+      duration: "مستمر",
+    },
+    {
+      name: "أتورفاستاتين",
+      dose: "20mg",
+      frequency: "مرة يومياً ليلاً",
+      duration: "مستمر",
+    },
+    {
+      name: "أوميبرازول",
+      dose: "20mg",
+      frequency: "مرة يومياً قبل الأكل",
+      duration: "أسبوعان",
+    },
+    {
+      name: "أموكسيسيلين",
+      dose: "500mg",
+      frequency: "3 مرات يومياً",
+      duration: "7 أيام",
+    },
+    {
+      name: "باراسيتامول",
+      dose: "500mg",
+      frequency: "عند اللزوم",
+      duration: "حتى زوال الألم",
+    },
+    {
+      name: "إيبوبروفين",
+      dose: "400mg",
+      frequency: "3 مرات يومياً",
+      duration: "5 أيام",
+      notes: "مع الأكل",
+    },
+    {
+      name: "ليفوثيروكسين",
+      dose: "50mcg",
+      frequency: "مرة يومياً صائم",
+      duration: "مستمر",
+    },
+    {
+      name: "أملاح الحديد",
+      dose: "150mg",
+      frequency: "مرتين يومياً",
+      duration: "3 أشهر",
+    },
+    {
+      name: "فيتامين د3",
+      dose: "50000IU",
+      frequency: "أسبوعياً",
+      duration: "شهرين",
+    },
+    {
+      name: "أزيثروميسين",
+      dose: "500mg",
+      frequency: "مرة يومياً",
+      duration: "3 أيام",
+    },
+    {
+      name: "هيدروكلوروثيازيد",
+      dose: "25mg",
+      frequency: "مرة يومياً",
+      duration: "مستمر",
+    },
+  ];
+
+  for (const m of medications) {
+    await (prisma as any).medicationCatalog
+      .create({
+        data: { clinicId: clinicAlpha.id, doctorId: drAlpha.id, ...m },
+      })
+      .catch(() => null);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 8. كتالوج الأشعة
+  // ══════════════════════════════════════════════════════════════════════════
+  const imaging = [
+    { name: "أشعة سينية صدر", category: "X-Ray" },
+    { name: "موجات صوتية بطن كامل", category: "Ultrasound" },
+    { name: "موجات صوتية حوض", category: "Ultrasound" },
+    { name: "CT صدر", category: "CT Scan" },
+    { name: "CT بطن وحوض بتباين", category: "CT Scan" },
+    { name: "MRI رأس", category: "MRI" },
+    { name: "MRI عمود فقري", category: "MRI" },
+    { name: "قلب صدى", category: "Echo" },
+    { name: "رسم قلب ECG", category: "ECG" },
+    { name: "فحص عيون قاع الشبكية", category: "Ophthalmology" },
+  ];
+
+  for (const img of imaging) {
+    await (prisma as any).imagingCatalog
+      .create({
+        data: { clinicId: clinicAlpha.id, doctorId: drAlpha.id, ...img },
+      })
+      .catch(() => null);
+  }
+  console.log("✅  كتالوج الأدوية والأشعة");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 9. 60 مريض لعيادة Alpha
+  // ══════════════════════════════════════════════════════════════════════════
+  const arabicNames = [
+    "محمد أحمد عبدالله",
+    "أحمد محمود حسن",
+    "علي محمد سعيد",
+    "عمر خالد إبراهيم",
+    "يوسف طارق منصور",
+    "حسن علي الشاذلي",
+    "إبراهيم عمر فاروق",
+    "خالد محمد عطية",
+    "طارق حسين سلامة",
+    "مصطفى رمضان عبدالحميد",
+    "عبدالرحمن سامي نجيب",
+    "هاني وائل صالح",
+    "مروان فتحي رضوان",
+    "وائل سمير العيسى",
+    "رامي جمال يحيى",
+    "سامي حمدي ثابت",
+    "أيمن عبدالحميد كمال",
+    "جمال عزت العزيز",
+    "نبيل فريد سلمان",
+    "عادل فوزي حلمي",
+    "فاطمة محمد نور",
+    "مريم أحمد الحسن",
+    "زينب علي عمر",
+    "نورا خالد رشيد",
+    "هنا سعيد البكري",
+    "دينا هشام غانم",
+    "رنا عمر شوقي",
+    "لمى وليد صبري",
+    "أميرة طارق زكريا",
+    "شيماء إبراهيم نصر",
+    "هبة محمود كريم",
+    "إيمان حسن ريان",
+    "سمر أحمد بدوي",
+    "نهى علي عمران",
+    "دعاء عبدالله رفعت",
+    "منى حسين قاسم",
+    "أسماء يوسف حافظ",
+    "رحمة مصطفى جابر",
+    "نجوى جمال وهبة",
+    "آية محمد الشهاوي",
+    "كريم طارق البدري",
+    "يحيى محمد الصاوي",
+    "زياد عمرو فتحي",
+    "ماهر هاني سعد",
+    "لقاء سمير علي",
+    "رغد أحمد صالح",
+    "ميادة خالد سليم",
+    "جنى وائل عباس",
+    "حنين عبدالرحمن حجاج",
+    "غادة محمد رجب",
+    "إسلام حسام الدين",
+    "عمار يوسف حسني",
+    "بسمة طارق نصار",
+    "ولاء أحمد ماضي",
+    "تسنيم محمود جاد",
+    "أروى خليل دياب",
+    "روان عمر بهجت",
+    "نادية حسن فرحان",
+    "ياسمين سعيد ناصر",
+    "صفاء محمد فايز",
+  ];
+
+  const phones = Array.from(
+    { length: 60 },
+    (_, i) => `+2010${String(i + 10000000).slice(1)}`,
+  );
+
+  const patients: any[] = [];
+  for (let i = 0; i < 60; i++) {
+    const birthYear = randInt(1960, 2005);
+    const existing = await (prisma as any).patient.findUnique({
+      where: { clinicId_code: { clinicId: clinicAlpha.id, code: pc(i + 1) } },
+    });
+    const patient =
+      existing ??
+      (await (prisma as any).patient.create({
+        data: {
+          clinicId: clinicAlpha.id,
+          createdById: drAlpha.id,
+          code: pc(i + 1),
+          fullName: arabicNames[i],
+          phone: phones[i],
+          dateOfBirth: new Date(birthYear, randInt(0, 11), randInt(1, 28)),
+          medicalNotes:
+            i % 5 === 0
+              ? "حساسية من البنسلين"
+              : i % 5 === 1
+                ? "مريض سكري نوع 2 — متابعة منتظمة"
+                : i % 5 === 2
+                  ? "ضغط دم مرتفع"
+                  : i % 7 === 0
+                    ? "مريض قلب — يأخذ أسبرين"
+                    : null,
+        },
+      }));
+    patients.push(patient);
+  }
+  console.log(`✅  ${patients.length} مريض — عيادة Alpha`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 10. 20 مريض لعيادة Beta
+  // ══════════════════════════════════════════════════════════════════════════
+  const betaPatients: any[] = [];
+  for (let i = 0; i < 20; i++) {
+    const existing = await (prisma as any).patient.findUnique({
+      where: { clinicId_code: { clinicId: clinicBeta.id, code: pc(i + 1) } },
+    });
+    const p =
+      existing ??
+      (await (prisma as any).patient.create({
+        data: {
+          clinicId: clinicBeta.id,
+          createdById: drBeta.id,
+          code: pc(i + 1),
+          fullName: arabicNames[i + 20],
+          phone: `+2011${String(i + 10000000).slice(1)}`,
+          medicalNotes: i % 3 === 0 ? "حساسية من اللاتكس" : null,
+        },
+      }));
+    betaPatients.push(p);
+  }
+  console.log(`✅  ${betaPatients.length} مريض — عيادة Beta`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 11. مواعيد (Alpha) — 200+ موعد
+  // ══════════════════════════════════════════════════════════════════════════
+  const visitTypes = ["NEW_VISIT", "FOLLOW_UP", "EMERGENCY", "CONSULTATION"];
+  const allAppts: any[] = [];
+
+  // ─ مواعيد ماضية (90 يوم الماضية) — COMPLETED / CANCELLED
+  for (let day = 1; day <= 60; day++) {
+    const numAppts = randInt(2, 5);
+    for (let j = 0; j < numAppts; j++) {
+      const patient = patients[randInt(0, patients.length - 1)];
+      const hour = randInt(9, 17);
+      const status = Math.random() < 0.85 ? "COMPLETED" : "CANCELLED";
+      const appt = await (prisma as any).appointment.create({
+        data: {
+          clinicId: clinicAlpha.id,
+          patientId: patient.id,
+          doctorId: drAlpha.id,
+          startsAt: pastAt(day, hour),
+          endsAt: pastAt(day, hour + 1),
+          status,
+          visitType: rand(visitTypes),
+          notes:
+            j % 3 === 0
+              ? "مريض يشكو من ألم في الصدر"
+              : j % 3 === 1
+                ? "متابعة سكر"
+                : null,
+        },
+      });
+      allAppts.push(appt);
+    }
+  }
+
+  // ─ مواعيد اليوم — IN_QUEUE / IN_PROGRESS / COMPLETED
+  const todayStatuses: AppointmentStatus[] = [
+    "COMPLETED",
+    "COMPLETED",
+    "IN_PROGRESS",
+    "IN_QUEUE",
+    "IN_QUEUE",
+    "IN_QUEUE",
+  ];
+  for (let i = 0; i < 6; i++) {
+    const patient = patients[i];
+    const appt = await (prisma as any).appointment.create({
+      data: {
+        clinicId: clinicAlpha.id,
+        patientId: patient.id,
+        doctorId: drAlpha.id,
+        startsAt: todayAt(9 + i * 1),
+        endsAt: todayAt(10 + i * 1),
+        status: todayStatuses[i],
+        visitType: i < 2 ? "FOLLOW_UP" : "NEW_VISIT",
+      },
+    });
+    allAppts.push(appt);
+  }
+
+  // ─ مواعيد مستقبلية (30 يوم قادمة)
+  for (let day = 1; day <= 14; day++) {
+    const numAppts = randInt(1, 4);
+    for (let j = 0; j < numAppts; j++) {
+      const patient = patients[randInt(0, patients.length - 1)];
+      const hour = randInt(9, 16);
+      const appt = await (prisma as any).appointment.create({
+        data: {
+          clinicId: clinicAlpha.id,
+          patientId: patient.id,
+          doctorId: drAlpha.id,
+          startsAt: (() => {
+            const d = daysFromNow(day);
+            d.setHours(hour, 0, 0, 0);
+            return d;
+          })(),
+          endsAt: (() => {
+            const d = daysFromNow(day);
+            d.setHours(hour + 1, 0, 0, 0);
+            return d;
+          })(),
+          status: "IN_QUEUE",
+          visitType: rand(visitTypes),
+        },
+      });
+      allAppts.push(appt);
+    }
+  }
+
+  const completedAppts = allAppts.filter((a) => a.status === "COMPLETED");
   console.log(
-    `✅  عيادة Beta → ${clinicBeta.name} (اشتراك منتهي · إيجار ثابت)`,
+    `✅  ${allAppts.length} موعد (${completedAppts.length} مكتمل) — Alpha`,
   );
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 4. كتالوج أدوية وأشعة
+  // 12. روشتات
   // ══════════════════════════════════════════════════════════════════════════
-  const alphaChk = await prisma.medicationCatalog.findFirst({
-    where: { clinicId: clinicAlpha.id, doctorId: userDrAlpha.id },
-  });
+  const diagnosisList = [
+    "ارتفاع ضغط الدم",
+    "سكري نوع 2",
+    "خمول الغدة الدرقية",
+    "التهاب المعدة",
+    "ارتفاع الكوليسترول",
+    "فقر الدم",
+    "التهاب الجهاز التنفسي العلوي",
+    "نقص فيتامين د",
+    "حمى",
+    "التهاب اللوزتين",
+  ];
 
-  if (!alphaChk) {
-    await prisma.medicationCatalog.createMany({
-      data: [
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "أموكسيسيلين 500mg",
-          dose: "500mg",
-          frequency: "3 مرات يومياً",
-          duration: "7 أيام",
-          notes: "بعد الأكل",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "باراسيتامول 500mg",
-          dose: "500mg",
-          frequency: "عند الحاجة كل 6 ساعات",
-          duration: "حسب الأعراض",
-          notes: "حد أقصى 4 جرعات",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "أوميبرازول 20mg",
-          dose: "20mg",
-          frequency: "مرة يومياً",
-          duration: "30 يوم",
-          notes: "قبل الأكل",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "ميتفورمين 500mg",
-          dose: "500mg",
-          frequency: "مرتين يومياً",
-          duration: "مستمر",
-          notes: "مع الأكل",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "ليفوثيروكسين 50mcg",
-          dose: "50mcg",
-          frequency: "مرة صباحاً",
-          duration: "مستمر",
-          notes: "قبل الفطار بنص ساعة",
-          isActive: false,
-        },
-      ],
-    });
-
-    await prisma.imagingCatalog.createMany({
-      data: [
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "أشعة صدر AP",
-          category: "X-Ray",
-          notes: "وقوف",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "سونار بطن كامل",
-          category: "Ultrasound",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "CT صدر بدون حقن",
-          category: "CT",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          doctorId: userDrAlpha.id,
-          name: "MRI رأس",
-          category: "MRI",
-        },
-      ],
-    });
+  let rxCount = 0;
+  for (const appt of completedAppts.slice(0, 80)) {
+    if (Math.random() < 0.75) {
+      const numMeds = randInt(1, 4);
+      const meds = Array.from({ length: numMeds }, (_, i) => ({
+        name: medications[randInt(0, medications.length - 1)].name,
+        dose: rand(["500mg", "250mg", "20mg", "10mg", "5mg"]),
+        frequency: rand(["مرة يومياً", "مرتين يومياً", "3 مرات يومياً"]),
+        duration: rand(["7 أيام", "أسبوعان", "شهر", "مستمر"]),
+      }));
+      await (prisma as any).prescription
+        .create({
+          data: {
+            clinicId: clinicAlpha.id,
+            patientId: appt.patientId,
+            doctorId: drAlpha.id,
+            appointmentId: appt.id,
+            diagnosis: rand(diagnosisList),
+            medications: meds,
+            issuedAt: appt.startsAt,
+          },
+        })
+        .catch(() => null);
+      rxCount++;
+    }
   }
-
-  const betaChk = await prisma.medicationCatalog.findFirst({
-    where: { clinicId: clinicBeta.id, doctorId: userDrBeta.id },
-  });
-  if (!betaChk) {
-    await prisma.medicationCatalog.createMany({
-      data: [
-        {
-          clinicId: clinicBeta.id,
-          doctorId: userDrBeta.id,
-          name: "أموكسيسيلين شراب 250mg/5ml",
-          dose: "5ml",
-          frequency: "3 مرات يومياً",
-          duration: "7 أيام",
-          notes: "رج قبل الاستخدام",
-        },
-        {
-          clinicId: clinicBeta.id,
-          doctorId: userDrBeta.id,
-          name: "إيبوبروفين 100mg/5ml",
-          dose: "حسب الوزن",
-          frequency: "كل 8 ساعات",
-          duration: "5 أيام",
-          notes: "بعد الأكل",
-        },
-        {
-          clinicId: clinicBeta.id,
-          doctorId: userDrBeta.id,
-          name: "سيتريزين شراب",
-          dose: "5ml",
-          frequency: "مرة ليلاً",
-          duration: "10 أيام",
-        },
-      ],
-    });
-  }
-  console.log("✅  كتالوج أدوية وأشعة");
+  console.log(`✅  ${rxCount} روشتة`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 5. قوالب روشتات
+  // 13. فواتير
   // ══════════════════════════════════════════════════════════════════════════
-  const tmplChk = await (prisma as any).prescriptionTemplate.findFirst({
-    where: { clinicId: clinicAlpha.id, doctorId: userDrAlpha.id },
-  });
-  if (!tmplChk) {
-    await (prisma as any).prescriptionTemplate.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        doctorId: userDrAlpha.id,
-        title: "روشتة عيادة ألفا",
-        header: {
-          clinicName: "عيادة ألفا للباطنة",
-          doctorName: "د. أحمد سالم",
-          specialty: "استشاري طب باطني",
-          phone: "+201012345678",
-          address: "القاهرة - مدينة نصر",
-        },
-        footer: {
-          notes: "يُرجى الالتزام بمواعيد الدواء وإعادة الكشف بعد أسبوعين",
-        },
-        isDefault: true,
-      },
-    });
-  }
-  console.log("✅  قوالب روشتات");
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // 6. مرضى عيادة Alpha
-  // ══════════════════════════════════════════════════════════════════════════
-  const alphaPatientsChk = await prisma.patient.count({
-    where: { clinicId: clinicAlpha.id },
-  });
-
-  let pA1: any, pA2: any, pA3: any, pA4: any, pA5: any, pA6: any, pA7: any;
-
-  if (alphaPatientsChk === 0) {
-    // مريض 1 — بيانات كاملة + ملاحظات
-    pA1 = await prisma.patient.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        createdById: userDrAlpha.id,
-        code: patientCode(1),
-        fullName: "محمد علي حسن",
-        phone: "+201012345678",
-        dateOfBirth: new Date("1985-06-15"),
-        medicalNotes:
-          "مريض بالسكري النوع الثاني · حساسية من البنسيلين · ضغط مرتفع",
-      },
-    });
-
-    // مريض 2 — بدون هاتف
-    pA2 = await prisma.patient.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        createdById: userRecAlpha.id,
-        code: patientCode(2),
-        fullName: "فاطمة إبراهيم عمر",
-        dateOfBirth: new Date("1992-11-03"),
-        medicalNotes: "ربو خفيف · تأخذ بخاخ سالبوتامول عند الحاجة",
-      },
-    });
-
-    // مريض 3 — بيانات مبسطة جداً
-    pA3 = await prisma.patient.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        createdById: userRecAlpha.id,
-        code: patientCode(3),
-        fullName: "خالد عبد الرحمن",
-        phone: "+201099991234",
-      },
-    });
-
-    // مريض 4 — شاب بدون ملاحظات
-    pA4 = await prisma.patient.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        createdById: userDrAlpha.id,
-        code: patientCode(4),
-        fullName: "يوسف مصطفى النجار",
-        phone: "+201155556666",
-        dateOfBirth: new Date("2000-01-20"),
-      },
-    });
-
-    // مريض 5 — مسنة تحتاج متابعة مستمرة
-    pA5 = await prisma.patient.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        createdById: userDrAlpha.id,
-        code: patientCode(5),
-        fullName: "سهير محمود البكر",
-        phone: "+201277778888",
-        dateOfBirth: new Date("1955-03-08"),
-        medicalNotes:
-          "ضغط مرتفع مزمن · قصور كلوي خفيف · لا تتحمل مضادات الالتهاب",
-      },
-    });
-
-    // مريض 6 — walk-in جديد (بيانات ناقصة)
-    pA6 = await prisma.patient.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        createdById: userRecAlpha.id,
-        code: patientCode(6),
-        fullName: "عمر حسين",
-        phone: "+201033334444",
-      },
-    });
-
-    // مريض 7 — مريض مجهول الاتصال (تسجيل طارئ)
-    pA7 = await prisma.patient.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        createdById: userRecAlpha.id,
-        code: patientCode(7),
-        fullName: "سمر وليد",
-      },
-    });
-
-    // مرفق لمريض 1
-    await prisma.patientAttachment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA1.id,
-        storageKey: "attachments/alpha/p0001/labs-2024.pdf",
-        fileName: "تحاليل السكر والكلى - يناير 2024.pdf",
-        mimeType: "application/pdf",
-      },
-    });
-
-    await prisma.patientAttachment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA1.id,
-        storageKey: "attachments/alpha/p0001/ecg.jpg",
-        fileName: "رسم قلب.jpg",
-        mimeType: "image/jpeg",
-      },
-    });
-  } else {
-    // إذا موجود — جيب المرضى الموجودين
-    const existing = await prisma.patient.findMany({
-      where: { clinicId: clinicAlpha.id },
-      orderBy: { createdAt: "asc" },
-      take: 7,
-    });
-    [pA1, pA2, pA3, pA4, pA5, pA6, pA7] = existing;
-  }
-  console.log("✅  مرضى عيادة Alpha (7 مرضى)");
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // 7. مواعيد عيادة Alpha — كل الحالات الممكنة
-  // ══════════════════════════════════════════════════════════════════════════
-  const apptChk = await prisma.appointment.count({
-    where: { clinicId: clinicAlpha.id },
-  });
-
-  let apptInProgress: any, apptCompleted1: any;
-
-  if (apptChk === 0 && pA1 && pA2 && pA3 && pA4 && pA5 && pA6 && pA7) {
-    // ── اليوم ─────────────────────────────────────────────────────────────
-
-    // 1. IN_QUEUE — مريض في القائمة لسه
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA1.id,
-        doctorId: userDrAlpha.id,
-        startsAt: todayAt(9, 0),
-        endsAt: todayAt(9, 30),
-        status: AppointmentStatus.IN_QUEUE,
-        visitType: "NEW_VISIT",
-        notes: "مراجعة دورية للسكر والضغط",
-      },
-    });
-
-    // 2. IN_PROGRESS — الدكتور بيكشف عليه دلوقتي
-    apptInProgress = await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA2.id,
-        doctorId: userDrAlpha.id,
-        startsAt: todayAt(9, 30),
-        endsAt: todayAt(10, 0),
-        status: AppointmentStatus.IN_PROGRESS,
-        visitType: "FOLLOW_UP",
-      },
-    });
-
-    // 3. IN_QUEUE — حجز مسبق لبعدين ولسه في الانتظار
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA3.id,
-        doctorId: userDrAlpha.id,
-        startsAt: todayAt(11, 0),
-        endsAt: todayAt(11, 30),
-        status: AppointmentStatus.IN_QUEUE,
-        visitType: "NEW_VISIT",
-      },
-    });
-
-    // 4. IN_QUEUE — وصل العيادة ولسه في الانتظار
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA4.id,
-        doctorId: userDrAlpha.id,
-        startsAt: todayAt(10, 0),
-        endsAt: todayAt(10, 30),
-        status: AppointmentStatus.IN_QUEUE,
-        visitType: "NEW_VISIT",
-        notes: "كشف أول مرة",
-      },
-    });
-
-    // 5. COMPLETED — اتخلص من الكشف
-    apptCompleted1 = await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA5.id,
-        doctorId: userDrAlpha.id,
-        startsAt: todayAt(8, 0),
-        endsAt: todayAt(8, 30),
-        status: AppointmentStatus.COMPLETED,
-        visitType: "FOLLOW_UP",
-      },
-    });
-
-    // 6. CANCELLED — اتلغى
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA6.id,
-        doctorId: userDrAlpha.id,
-        startsAt: todayAt(12, 0),
-        endsAt: todayAt(12, 30),
-        status: AppointmentStatus.CANCELLED,
-        visitType: "NEW_VISIT",
-        notes: "إلغاء من قبل المريض",
-      },
-    });
-
-    // 7. CANCELLED — المريض ما دخلش الكشف
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA7.id,
-        doctorId: userDrAlpha.id,
-        startsAt: todayAt(7, 30),
-        endsAt: todayAt(8, 0),
-        status: AppointmentStatus.CANCELLED,
-        visitType: "NEW_VISIT",
-      },
-    });
-
-    // ── مواعيد مستقبلية ───────────────────────────────────────────────────
-
-    // حجز بكره
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA1.id,
-        doctorId: userDrAlpha.id,
-        startsAt: daysFromNow(1),
-        endsAt: new Date(daysFromNow(1).getTime() + 30 * 60000),
-        status: AppointmentStatus.IN_QUEUE,
-        visitType: "FOLLOW_UP",
-        notes: "متابعة نتيجة التحاليل",
-      },
-    });
-
-    // حجز بعد أسبوع
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA3.id,
-        doctorId: userDrAlpha.id,
-        startsAt: daysFromNow(7),
-        endsAt: new Date(daysFromNow(7).getTime() + 30 * 60000),
-        status: AppointmentStatus.IN_QUEUE,
-        visitType: "NEW_VISIT",
-      },
-    });
-
-    // ── مواعيد ماضية ─────────────────────────────────────────────────────
-
-    // أسبوع فات — completed
-    const weekAgo = daysFromNow(-7);
-    weekAgo.setHours(10, 0, 0, 0);
-    const weekAgoEnd = new Date(weekAgo.getTime() + 30 * 60000);
-
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA1.id,
-        doctorId: userDrAlpha.id,
-        startsAt: weekAgo,
-        endsAt: weekAgoEnd,
-        status: AppointmentStatus.COMPLETED,
-        visitType: "NEW_VISIT",
-      },
-    });
-
-    // شهر فات — completed + فاتورة تاريخية
-    const monthAgo = daysFromNow(-30);
-    monthAgo.setHours(9, 0, 0, 0);
-    const monthAgoEnd = new Date(monthAgo.getTime() + 30 * 60000);
-
-    const oldAppt = await prisma.appointment.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA5.id,
-        doctorId: userDrAlpha.id,
-        startsAt: monthAgo,
-        endsAt: monthAgoEnd,
-        status: AppointmentStatus.COMPLETED,
-        visitType: "FOLLOW_UP",
-      },
-    });
-
-    // ── الفواتير ──────────────────────────────────────────────────────────
-    // فاتورة لموعد مكتمل اليوم — cash
-    await prisma.invoice.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA5.id,
-        appointmentId: apptCompleted1.id,
-        issuedById: userDrAlpha.id,
-        paymentMethod: "cash",
-        status: "PAID",
-        totalAmount: 300,
-        services: [{ name: "كشف متابعة", amount: 300 }],
-      },
-    });
-
-    // فاتورة تاريخية — card
-    await prisma.invoice.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA5.id,
-        appointmentId: oldAppt.id,
-        issuedById: userDrAlpha.id,
-        paymentMethod: "card",
-        status: "PAID",
-        totalAmount: 350,
-        services: [
-          { name: "كشف متابعة", amount: 300 },
-          { name: "تحليل سريع", amount: 50 },
-        ],
-      },
-    });
-
-    // فاتورة walk-in بدون موعد — insurance
-    await prisma.invoice.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA1.id,
-        issuedById: userRecAlpha.id,
-        paymentMethod: "insurance",
-        status: "PAID",
-        totalAmount: 150,
-        services: [{ name: "كشف تأمين", amount: 150 }],
-      },
-    });
-
-    // ── الروشتات ──────────────────────────────────────────────────────────
-    // روشتة لموعد الـ IN_PROGRESS
-    await prisma.prescription.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA2.id,
-        doctorId: userDrAlpha.id,
-        diagnosis: "نزلة برد حادة مع التهاب حلق",
-        medications: {
-          medications: [
+  const paymentMethods = ["CASH", "CARD", "INSURANCE", "TRANSFER"];
+  let invoiceCount = 0;
+  for (const appt of completedAppts.slice(0, 70)) {
+    const isFollowUp = appt.visitType === "FOLLOW_UP";
+    const fee = isFollowUp ? 150 : 300;
+    const extraService = Math.random() < 0.4;
+    const total = fee + (extraService ? randInt(60, 400) : 0);
+    const services = [
+      { name: isFollowUp ? "كشف متابعة" : "كشف باطنة", price: fee, qty: 1 },
+      ...(extraService
+        ? [
             {
-              name: "أموكسيسيلين 500mg",
-              dose: "500mg",
-              frequency: "3 مرات يومياً",
-              duration: "7 أيام",
-              notes: "بعد الأكل",
+              name: rand(["تحليل سكر", "موجات صوتية", "رسم قلب"]),
+              price: total - fee,
+              qty: 1,
             },
-            {
-              name: "باراسيتامول 500mg",
-              dose: "500mg",
-              frequency: "عند الحاجة",
-              duration: "5 أيام",
-            },
-          ],
-          notes: "الراحة التامة وشرب السوائل",
-          requestedTests: ["CBC", "CRP"],
-          requestedImaging: [],
+          ]
+        : []),
+    ];
+    const paidFull = Math.random() < 0.8;
+    await (prisma as any).invoice
+      .create({
+        data: {
+          clinicId: clinicAlpha.id,
+          patientId: appt.patientId,
+          appointmentId: appt.id,
+          issuedById: rand([drAlpha.id, recAlpha1.id]),
+          totalAmount: total,
+          paidAmount: paidFull ? total : 0,
+          paymentMethod: rand(paymentMethods),
+          status: paidFull ? "PAID" : "PENDING",
+          services,
+          createdAt: appt.startsAt,
         },
-      },
-    });
-
-    // روشتة قديمة لمريض 1
-    await prisma.prescription.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA1.id,
-        doctorId: userDrAlpha.id,
-        diagnosis: "سكري نوع 2 غير منضبط",
-        medications: {
-          medications: [
-            {
-              name: "ميتفورمين 500mg",
-              dose: "500mg",
-              frequency: "مرتين يومياً",
-              duration: "مستمر",
-              notes: "مع الأكل",
-            },
-            {
-              name: "أوميبرازول 20mg",
-              dose: "20mg",
-              frequency: "مرة صباحاً",
-              duration: "30 يوم",
-              notes: "قبل الفطار",
-            },
-          ],
-          notes: "اتباع نظام غذائي صارم — تقليل السكريات والنشويات",
-          requestedTests: ["HbA1c", "Creatinine", "Lipid Profile"],
-          requestedImaging: ["سونار بطن كامل"],
-        },
-        issuedAt: daysFromNow(-30),
-      },
-    });
-
-    // روشتة بدون أدوية (تحاليل وأشعة فقط)
-    await prisma.prescription.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        patientId: pA5.id,
-        doctorId: userDrAlpha.id,
-        diagnosis: "تقييم دوري",
-        medications: {
-          medications: [],
-          notes: "فحص دوري شامل",
-          requestedTests: ["CBC", "LFT", "RFT", "TSH", "Urine Analysis"],
-          requestedImaging: ["أشعة صدر AP"],
-        },
-        issuedAt: daysFromNow(-30),
-      },
-    });
-
-    console.log("✅  مواعيد Alpha (9 مواعيد) + فواتير (3) + روشتات (3)");
-  } else {
-    console.log("ℹ️   مواعيد Alpha — موجودة بالفعل، تم التخطي");
-    // جيب أول موعد completed لو موجود
-    apptCompleted1 = await prisma.appointment.findFirst({
-      where: { clinicId: clinicAlpha.id, status: AppointmentStatus.COMPLETED },
-    });
-    apptInProgress = await prisma.appointment.findFirst({
-      where: {
-        clinicId: clinicAlpha.id,
-        status: AppointmentStatus.IN_PROGRESS,
-      },
-    });
+      })
+      .catch(() => null);
+    invoiceCount++;
   }
+  console.log(`✅  ${invoiceCount} فاتورة`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 8. مرضى ومواعيد عيادة Beta
+  // 14. خطط التقسيط (12 خطة بسيناريوهات مختلفة)
   // ══════════════════════════════════════════════════════════════════════════
-  const betaPatientsChk = await prisma.patient.count({
-    where: { clinicId: clinicBeta.id },
-  });
+  const installmentTitles = [
+    "عملية ضرس العقل",
+    "حشو عصب أمامي",
+    "تقويم الفك",
+    "زراعة ضرسين",
+    "إجراء قلبي",
+    "علاج كيماوي دعامة",
+    "عملية استئصال الزائدة",
+    "طرد حصوة كلى",
+    "علاج ضغط مزمن",
+    "متابعة سكر ربع سنوي",
+    "تحاليل دورية",
+    "ملف متكامل",
+  ];
 
-  if (betaPatientsChk === 0) {
-    const pB1 = await prisma.patient.create({
+  for (let i = 0; i < 12; i++) {
+    const patient = patients[i * 5];
+    const total = randInt(1000, 15000);
+    const paidSoFar = i < 4 ? 0 : i < 8 ? randInt(300, total - 100) : total;
+    const status: InstallmentStatus =
+      paidSoFar === 0 ? "PENDING" : paidSoFar >= total ? "PAID" : "PARTIAL";
+    const completedAppt = completedAppts.find(
+      (a) => a.patientId === patient.id,
+    );
+
+    const plan = await (prisma as any).installmentPlan.create({
+      data: {
+        clinicId: clinicAlpha.id,
+        patientId: patient.id,
+        appointmentId: completedAppt?.id ?? null,
+        createdById: rand([drAlpha.id, recAlpha1.id]),
+        title: installmentTitles[i],
+        totalAmount: total,
+        paidAmount: paidSoFar,
+        status,
+        notes: i % 3 === 0 ? "مريض ملتزم بالمواعيد" : null,
+        createdAt: daysAgo(randInt(5, 60)),
+      },
+    });
+
+    // Add individual payments
+    if (paidSoFar > 0) {
+      const numPayments = status === "PAID" ? randInt(2, 4) : randInt(1, 2);
+      const perPayment = Math.floor(paidSoFar / numPayments);
+      for (let p = 0; p < numPayments; p++) {
+        await (prisma as any).installmentPayment
+          .create({
+            data: {
+              planId: plan.id,
+              amount:
+                p === numPayments - 1
+                  ? paidSoFar - perPayment * (numPayments - 1)
+                  : perPayment,
+              note: `دفعة ${p + 1}`,
+              paidAt: daysAgo(randInt(1, 50)),
+              recordedBy: recAlpha1.id,
+            },
+          })
+          .catch(() => null);
+      }
+    }
+  }
+  console.log("✅  12 خطة تقسيط");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 15. رواتب السيكريتيرة
+  // ══════════════════════════════════════════════════════════════════════════
+  const salary = await (prisma as any).staffSalary
+    .create({
+      data: {
+        clinicId: clinicAlpha.id,
+        clinicUserId: cuRec1.id,
+        monthlyAmount: 3500,
+        effectiveFrom: daysAgo(180),
+        isActive: true,
+      },
+    })
+    .catch(() => null);
+
+  if (salary) {
+    for (let m = 1; m <= 5; m++) {
+      await (prisma as any).salaryPayment
+        .create({
+          data: {
+            salaryId: salary.id,
+            clinicId: clinicAlpha.id,
+            amount: 3500,
+            paidAt: daysAgo(m * 30),
+            note: `راتب شهر ${m}`,
+            paidById: drAlpha.id,
+          },
+        })
+        .catch(() => null);
+    }
+  }
+  console.log("✅  رواتب");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 16. طلبات الاشتراك
+  // ══════════════════════════════════════════════════════════════════════════
+  await (prisma as any).subscriptionPaymentRequest
+    .create({
       data: {
         clinicId: clinicBeta.id,
-        createdById: userDrBeta.id,
-        code: patientCode(1),
-        fullName: "آدم طارق سعد",
-        phone: "+201066667777",
-        dateOfBirth: new Date("2019-05-10"),
-        medicalNotes: "ولد عمره 5 سنين · تأخر في الكلام",
+        planId: planSixMonths.id,
+        requestedById: drBeta.id,
+        transferPhone: "01234567890",
+        screenshotUrl: "https://placehold.co/400x300?text=Transfer+Screenshot",
+        notes: "تحويل على فودافون كاش",
+        status: "PENDING",
       },
-    });
+    })
+    .catch(() => null);
 
-    const pB2 = await prisma.patient.create({
-      data: {
-        clinicId: clinicBeta.id,
-        createdById: userDrBeta.id,
-        code: patientCode(2),
-        fullName: "لينا عصام فريد",
-        dateOfBirth: new Date("2021-09-22"),
-      },
-    });
-
-    // موعد اليوم في عيادة Beta
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicBeta.id,
-        patientId: pB1.id,
-        doctorId: userDrBeta.id,
-        startsAt: todayAt(10, 0),
-        endsAt: todayAt(10, 20),
-        status: AppointmentStatus.IN_QUEUE,
-        visitType: "NEW_VISIT",
-      },
-    });
-
-    await prisma.appointment.create({
-      data: {
-        clinicId: clinicBeta.id,
-        patientId: pB2.id,
-        doctorId: userDrBeta.id,
-        startsAt: todayAt(10, 30),
-        endsAt: todayAt(10, 50),
-        status: AppointmentStatus.IN_QUEUE,
-        visitType: "FOLLOW_UP",
-      },
-    });
-
-    console.log("✅  مرضى ومواعيد عيادة Beta");
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // 9. طلبات الاشتراك — كل الحالات
-  // ══════════════════════════════════════════════════════════════════════════
-  const reqChk = await (prisma as any).subscriptionPaymentRequest.count({
-    where: { clinicId: clinicAlpha.id },
-  });
-
-  if (reqChk === 0) {
-    // طلب PENDING (لسه ما راجعهوش)
-    await (prisma as any).subscriptionPaymentRequest.create({
+  await (prisma as any).subscriptionPaymentRequest
+    .create({
       data: {
         clinicId: clinicAlpha.id,
         planId: planYearly.id,
-        requestedById: userDrAlpha.id,
-        transferPhone: "+201012345678",
-        screenshotUrl: "https://placehold.co/600x400?text=Payment+Screenshot",
-        notes: "تجديد سنوي — تحويل على إنستاباي",
-        status: "PENDING",
-      },
-    });
-
-    // طلب APPROVED (وافق عليه السوبر ادمن)
-    await (prisma as any).subscriptionPaymentRequest.create({
-      data: {
-        clinicId: clinicAlpha.id,
-        planId: planSixMonths.id,
-        requestedById: userDrAlpha.id,
-        transferPhone: "+201012345678",
-        screenshotUrl: "https://placehold.co/600x400?text=Payment+Screenshot+2",
+        requestedById: drAlpha.id,
+        transferPhone: "01098765432",
+        screenshotUrl:
+          "https://placehold.co/400x300?text=Transfer+Screenshot+2",
         status: "APPROVED",
         reviewedById: superAdmin.id,
-        reviewedAt: daysFromNow(-60),
-        createdAt: daysFromNow(-61),
-        updatedAt: daysFromNow(-60),
+        reviewedAt: daysAgo(5),
       },
-    });
+    })
+    .catch(() => null);
 
-    // طلب REJECTED (رفضه السوبر ادمن)
-    await (prisma as any).subscriptionPaymentRequest.create({
+  await (prisma as any).subscriptionPaymentRequest
+    .create({
       data: {
-        clinicId: clinicBeta.id,
+        clinicId: clinicGamma.id,
         planId: planMonthly.id,
-        requestedById: userDrBeta.id,
-        transferPhone: "+201099998888",
-        screenshotUrl: "https://placehold.co/600x400?text=Bad+Screenshot",
+        requestedById: drGamma.id,
+        transferPhone: "01512345678",
+        screenshotUrl: "https://placehold.co/400x300?text=Rejected",
         status: "REJECTED",
         reviewedById: superAdmin.id,
-        reviewedAt: daysFromNow(-5),
-        rejectionReason: "الصورة غير واضحة — يُرجى إعادة الإرسال",
-        createdAt: daysFromNow(-6),
-        updatedAt: daysFromNow(-5),
+        reviewedAt: daysAgo(3),
+        rejectionReason: "الصورة غير واضحة — يرجى إعادة الإرسال",
       },
-    });
+    })
+    .catch(() => null);
+  console.log("✅  طلبات اشتراك (3)");
 
-    console.log("✅  طلبات الاشتراك (pending / approved / rejected)");
+  // ══════════════════════════════════════════════════════════════════════════
+  // 17. إشعارات
+  // ══════════════════════════════════════════════════════════════════════════
+  const notifications = [
+    {
+      userId: drAlpha.id,
+      type: "SUBSCRIPTION_APPROVED",
+      title: "تم تجديد اشتراكك",
+      body: "تم تجديد اشتراك عيادة ألفا لمدة سنة. اشتغل بكل راحة!",
+      isRead: true,
+    },
+    {
+      userId: drAlpha.id,
+      type: "PATIENT_REMINDER",
+      title: "تذكير: 6 مرضى اليوم",
+      body: "عندك 6 مرضى محجوزين اليوم. ابدأ يومك!",
+      isRead: false,
+    },
+    {
+      userId: drAlpha.id,
+      type: "INSTALLMENT_PAID",
+      title: "دفعة تقسيط جديدة",
+      body: "دفع المريض محمد أحمد عبدالله 500 جنيه من خطة تقسيطه.",
+      isRead: false,
+    },
+    {
+      userId: drBeta.id,
+      type: "SUBSCRIPTION_EXPIRED",
+      title: "انتهى اشتراكك",
+      body: "انتهى اشتراك عيادة بيتا. جدد الآن لتستمر في استخدام النظام.",
+      isRead: false,
+    },
+    {
+      userId: drBeta.id,
+      type: "SUBSCRIPTION_REJECTED",
+      title: "تم رفض طلب الاشتراك",
+      body: "تم رفض طلب تجديد الاشتراك: الصورة غير واضحة.",
+      isRead: false,
+    },
+    {
+      userId: drGamma.id,
+      type: "CLINIC_DEACTIVATED",
+      title: "تم إيقاف عيادتك",
+      body: "تم إيقاف عيادة جاما مؤقتاً من قِبل الإدارة.",
+      isRead: false,
+    },
+    {
+      userId: recAlpha1.id,
+      type: "APPOINTMENT_REMINDER",
+      title: "مريض جديد في الطابور",
+      body: "تم إضافة مريض جديد لطابور اليوم.",
+      isRead: true,
+    },
+  ];
+
+  for (const n of notifications) {
+    await (prisma as any).notification.create({ data: n }).catch(() => null);
   }
+  console.log("✅  إشعارات");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 10. إشعارات
+  // 18. شكاوي
   // ══════════════════════════════════════════════════════════════════════════
-  const notifChk = await prisma.notification.count({
-    where: { userId: userDrAlpha.id },
-  });
+  const complaints = [
+    {
+      clinicId: clinicAlpha.id,
+      submittedBy: drAlpha.id,
+      category: ComplaintCategory.BUG,
+      status: ComplaintStatus.RESOLVED,
+      title: "خطأ في رفع الملفات",
+      description:
+        "لما بحاول أرفع ملف PDF للمريض بيجيلي خطأ 404 ومش بيترفع. جربت أكتر من مرة.",
+      adminReply:
+        "تم حل المشكلة. كانت مشكلة في الـ Cloudinary config وتم تعديلها. جرب دلوقتي وأخبرنا.",
+      resolvedAt: daysAgo(5),
+      createdAt: daysAgo(10),
+    },
+    {
+      clinicId: clinicAlpha.id,
+      submittedBy: drAlpha.id,
+      category: ComplaintCategory.FEATURE,
+      status: ComplaintStatus.IN_REVIEW,
+      title: "طلب: تذكيرات واتساب للمرضى",
+      description:
+        "عايز النظام يبعت للمريض رسالة واتساب قبل موعده بيوم تلقائياً. ده هيوفر وقت كتير على السيكريتيرة.",
+      adminReply: null,
+      createdAt: daysAgo(7),
+    },
+    {
+      clinicId: clinicAlpha.id,
+      submittedBy: drAlpha.id,
+      category: ComplaintCategory.PERFORMANCE,
+      status: ComplaintStatus.OPEN,
+      title: "الموقع بطيء وقت الذروة",
+      description:
+        "لما بيكون عندي 3-4 نوافذ مفتوحة في نفس الوقت الموقع بيبطأ جداً خصوصاً صفحة المرضى.",
+      adminReply: null,
+      createdAt: daysAgo(2),
+    },
+    {
+      clinicId: clinicBeta.id,
+      submittedBy: drBeta.id,
+      category: ComplaintCategory.BILLING,
+      status: ComplaintStatus.RESOLVED,
+      title: "الفاتورة مش بتتطبع صح",
+      description:
+        "لما بطبع الفاتورة بيطلع اسم المريض ناقص والتاريخ بيبقى غلط.",
+      adminReply: "تم تحديث نظام الطباعة. جرب دلوقتي.",
+      resolvedAt: daysAgo(3),
+      createdAt: daysAgo(15),
+    },
+    {
+      clinicId: clinicBeta.id,
+      submittedBy: drBeta.id,
+      category: ComplaintCategory.UX,
+      status: ComplaintStatus.OPEN,
+      title: "صعوبة في تصفح ملف المريض",
+      description:
+        "لما بدور على روشتة قديمة بتاع مريض لازم أسكرول كتير. محتاج فلتر أو بحث جوه الملف.",
+      adminReply: null,
+      createdAt: daysAgo(1),
+    },
+  ];
 
-  if (notifChk === 0) {
-    // إشعار مقروء
-    await prisma.notification.create({
-      data: {
-        userId: userDrAlpha.id,
-        type: "SUBSCRIPTION_APPROVED",
-        title: "تم قبول طلب الاشتراك ✓",
-        body: 'تم تفعيل باقة "نصف سنوي" بنجاح. يمكنك الاستمرار في استخدام المنصة.',
-        isRead: true,
-        meta: { planName: "نصف سنوي", approved: true },
-      },
-    });
-
-    // إشعار غير مقروء
-    await prisma.notification.create({
-      data: {
-        userId: userDrAlpha.id,
-        type: "SUBSCRIPTION_PAYMENT_REQUESTED",
-        title: "طلب تجديد اشتراك جديد 💳",
-        body: 'عيادة "عيادة ألفا للباطنة" تطلب تجديد الاشتراك على باقة "سنوي".',
-        isRead: false,
-        meta: {
-          clinicId: clinicAlpha.id,
-          link: "/dashboard/super-admin/subscription-requests",
-        },
-      },
-    });
-
-    // إشعار تمديد مجاني
-    await prisma.notification.create({
-      data: {
-        userId: userDrAlpha.id,
-        type: "SUBSCRIPTION_EXTENDED",
-        title: "تم تمديد اشتراكك 🎁",
-        body: "تمت إضافة 10 أيام إضافية لاشتراكك كمكافأة إحالة.",
-        isRead: false,
-        meta: { days: 10 },
-      },
-    });
-
-    // إشعار للسوبر ادمن
-    await prisma.notification.create({
-      data: {
-        userId: superAdmin.id,
-        type: "SUBSCRIPTION_PAYMENT_REQUESTED",
-        title: "طلب تجديد اشتراك جديد 💳",
-        body: 'عيادة "عيادة ألفا للباطنة" تطلب تجديد الاشتراك. اضغط للمراجعة.',
-        isRead: false,
-        meta: {
-          clinicId: clinicAlpha.id,
-          link: "/dashboard/super-admin/subscription-requests",
-        },
-      },
-    });
-
-    console.log("✅  إشعارات (4 إشعارات)");
+  for (const c of complaints) {
+    await (prisma as any).complaint.create({ data: c }).catch(() => null);
   }
+  console.log("✅  شكاوي (5)");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 11. Audit Logs نماذجية
+  // 19. تقييمات المنصة
   // ══════════════════════════════════════════════════════════════════════════
-  const auditChk = await prisma.auditLog.count({
-    where: { clinicId: clinicAlpha.id },
-  });
+  const ratings = [
+    {
+      clinicId: clinicAlpha.id,
+      submittedBy: drAlpha.id,
+      overall: 4,
+      ease: 5,
+      features: 4,
+      support: 4,
+      comment:
+        "النظام ممتاز وسهل الاستخدام. بس محتاجين تضيفوا واتساب API وتقارير أكثر تفصيلاً.",
+      wouldRefer: true,
+    },
+    {
+      clinicId: clinicBeta.id,
+      submittedBy: drBeta.id,
+      overall: 3,
+      ease: 3,
+      features: 3,
+      support: 4,
+      comment:
+        "النظام كويس بس في حاجات كتير لسه محتاجة تتعمل. أتمنى يتحسن مع الوقت.",
+      wouldRefer: false,
+    },
+  ];
 
-  if (auditChk === 0) {
-    await prisma.auditLog.createMany({
-      data: [
-        {
-          clinicId: clinicAlpha.id,
-          actorId: superAdmin.id,
-          action: "CLINIC_CREATED",
-          entityType: "Clinic",
-          entityId: clinicAlpha.id,
-          meta: { slug: "alpha-clinic" },
-        },
-        {
-          clinicId: clinicAlpha.id,
-          actorId: userDrAlpha.id,
-          action: "PATIENT_CREATED",
-          entityType: "Patient",
-          meta: { code: patientCode(1) },
-        },
-        {
-          clinicId: clinicAlpha.id,
-          actorId: userRecAlpha.id,
-          action: "APPOINTMENT_CREATED",
-          entityType: "Appointment",
-          meta: { visitType: "NEW_VISIT" },
-        },
-        {
-          clinicId: clinicAlpha.id,
-          actorId: userDrAlpha.id,
-          action: "PRESCRIPTION_CREATED",
-          entityType: "Prescription",
-        },
-        {
-          clinicId: clinicAlpha.id,
-          actorId: userDrAlpha.id,
-          action: "INVOICE_CREATED",
-          entityType: "Invoice",
-          meta: { totalAmount: 300 },
-        },
-        {
-          clinicId: clinicAlpha.id,
-          actorId: superAdmin.id,
-          action: "SUBSCRIPTION_PAYMENT_APPROVED",
-          entityType: "SubscriptionPaymentRequest",
-          meta: { planId: planSixMonths.id },
-        },
-        {
-          clinicId: clinicBeta.id,
-          actorId: superAdmin.id,
-          action: "SUBSCRIPTION_PAYMENT_REJECTED",
-          entityType: "SubscriptionPaymentRequest",
-          meta: { reason: "صورة غير واضحة" },
-        },
-        {
-          actorId: superAdmin.id,
-          action: "SUPER_ADMIN_LOGIN",
-          entityType: "User",
-          entityId: superAdmin.id,
-        },
-      ],
-    });
-    console.log("✅  Audit logs (8 سجلات)");
+  for (const r of ratings) {
+    await (prisma as any).siteRating.create({ data: r }).catch(() => null);
   }
+  console.log("✅  تقييمات المنصة (2)");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ملخص بيانات الدخول
+  // 20. Audit Logs
   // ══════════════════════════════════════════════════════════════════════════
-  console.log(`
-╔══════════════════════════════════════════════════════════╗
-║                  🌱  Seed مكتمل بنجاح                   ║
-╠══════════════════════════════════════════════════════════╣
-║  كلمة السر لكل المستخدمين: Password123!                 ║
-╠══════════════════════════════════════════════════════════╣
-║  SUPER ADMIN                                             ║
-║    super@demo.test                                       ║
-╠══════════════════════════════════════════════════════════╣
-║  عيادة ALPHA — اشتراك نشط · نسبة 20%                   ║
-║    دكتور:       dr.alpha@demo.test                       ║
-║    receptionist: rec.alpha@demo.test / +201011112222      ║
-╠══════════════════════════════════════════════════════════╣
-║  عيادة BETA — اشتراك منتهي · إيجار ثابت 3000           ║
-║    دكتور:       dr.beta@demo.test  / +201099998888       ║
-╚══════════════════════════════════════════════════════════╝
-`);
+  const auditActions = [
+    {
+      action: "CLINIC_ACTIVATED",
+      entityType: "Clinic",
+      entityId: clinicAlpha.id,
+    },
+    {
+      action: "CLINIC_DEACTIVATED",
+      entityType: "Clinic",
+      entityId: clinicGamma.id,
+    },
+    {
+      action: "CLINIC_STAFF_DEACTIVATED",
+      entityType: "User",
+      entityId: recAlpha2.id,
+      meta: { role: "RECEPTIONIST" },
+    },
+    {
+      action: "SUBSCRIPTION_APPROVED",
+      entityType: "SubscriptionRequest",
+      meta: { plan: "YEARLY" },
+    },
+    {
+      action: "SUBSCRIPTION_REJECTED",
+      entityType: "SubscriptionRequest",
+      meta: { reason: "صورة غير واضحة" },
+    },
+    {
+      action: "PATIENT_CREATED",
+      entityType: "Patient",
+      meta: { code: "P0001" },
+    },
+    {
+      action: "PRESCRIPTION_ISSUED",
+      entityType: "Prescription",
+      meta: { diagnosis: "ارتفاع ضغط الدم" },
+    },
+    { action: "INVOICE_CREATED", entityType: "Invoice", meta: { amount: 450 } },
+    {
+      action: "INSTALLMENT_PAYMENT_ADDED",
+      entityType: "InstallmentPlan",
+      meta: { amount: 500 },
+    },
+  ];
+
+  for (const log of auditActions) {
+    await (prisma as any).auditLog
+      .create({
+        data: {
+          clinicId: clinicAlpha.id,
+          actorId: drAlpha.id,
+          createdAt: daysAgo(randInt(1, 30)),
+          ...log,
+        },
+      })
+      .catch(() => null);
+  }
+  console.log("✅  Audit logs");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Summary
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n🎉  الـ Seed اتكمل بنجاح!\n");
+  console.log("┌─────────────────────────────────────────────┐");
+  console.log("│              بيانات الدخول                  │");
+  console.log("├─────────────────────────────────────────────┤");
+  console.log("│ super@demo.test          ← Super Admin       │");
+  console.log("│ dr.alpha@demo.test       ← دكتور ألفا        │");
+  console.log("│ rec1.alpha@demo.test     ← سيكريتيرة ألفا    │");
+  console.log("│ rec2.alpha@demo.test     ← سيكريتيرة (موقوف) │");
+  console.log("│ dr.beta@demo.test        ← دكتور بيتا         │");
+  console.log("│ rec.beta@demo.test       ← سيكريتيرة بيتا    │");
+  console.log("│ dr.gamma@demo.test       ← دكتور عيادة موقوفة│");
+  console.log("├─────────────────────────────────────────────┤");
+  console.log("│ كلمة السر لكل الحسابات: Password123!        │");
+  console.log("└─────────────────────────────────────────────┘");
 }
 
 main()
   .catch((e) => {
-    console.error("❌  Seed فشل:", e);
+    console.error("❌  خطأ في الـ seed:", e);
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

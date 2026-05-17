@@ -16,6 +16,8 @@ import { BillingModule } from "./modules/billing/billing.module";
 import { ServicesModule } from "./modules/services/services.module";
 import { InstallmentsModule } from "./modules/installments/installments.module";
 import { SalariesModule } from "./modules/salaries/salaries.module";
+import { ComplaintsModule } from "./modules/complaints/complaints.module";
+import { SiteRatingModule } from "./modules/site-rating/site-rating.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 
 @Module({
@@ -40,6 +42,8 @@ import { NotificationsModule } from "./modules/notifications/notifications.modul
     InstallmentsModule,
     SalariesModule,
     NotificationsModule,
+    ComplaintsModule,
+    SiteRatingModule,
   ],
   controllers: [HealthController],
   providers: [],

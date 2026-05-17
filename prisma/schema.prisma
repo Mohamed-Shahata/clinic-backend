@@ -65,6 +65,8 @@ model Clinic {
   staffSalaries         StaffSalary[]
   salaryPayments        SalaryPayment[]
   serviceCatalog        ServiceCatalog[]
+  complaints            Complaint[]
+  siteRatings           SiteRating[]
 }
 
 model User {
@@ -454,4 +456,61 @@ model ServiceCatalog {
 
   @@index([clinicId, isActive])
   @@index([clinicId, name])
+}
+
+// ── Complaints (شكاوي الدكاتره) ────────────────────────────────────────────
+
+enum ComplaintStatus {
+  OPEN       // مفتوحة
+  IN_REVIEW  // قيد المراجعة
+  RESOLVED   // تم الحل
+  CLOSED     // مغلقة
+}
+
+enum ComplaintCategory {
+  BUG          // خطأ تقني
+  FEATURE      // طلب ميزة
+  PERFORMANCE  // بطء أو أداء
+  UX           // تجربة المستخدم
+  BILLING      // مشكلة في الفواتير
+  OTHER        // أخرى
+}
+
+model Complaint {
+  id          String            @id @default(cuid())
+  clinicId    String
+  submittedBy String            // userId
+  category    ComplaintCategory @default(OTHER)
+  title       String
+  description String
+  status      ComplaintStatus   @default(OPEN)
+  adminReply  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, status, createdAt])
+  @@index([submittedBy, createdAt])
+}
+
+// ── Site Rating (تقييم الموقع) ─────────────────────────────────────────────
+
+model SiteRating {
+  id          String   @id @default(cuid())
+  clinicId    String
+  submittedBy String
+  overall     Int
+  ease        Int
+  features    Int
+  support     Int
+  comment     String?
+  wouldRefer  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, submittedBy])
+  @@index([createdAt])
 }

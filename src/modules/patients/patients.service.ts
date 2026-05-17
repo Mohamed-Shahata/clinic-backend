@@ -131,7 +131,13 @@ export class PatientsService {
           id: a.id,
           appointmentId: a.appointmentId ?? null,
           name: a.fileName,
-          url: this.uploadService.generateSignedUrl(a.storageKey, 300),
+          // FIX-3: Pass mimeType so generateSignedUrl uses resource_type:'raw' for PDFs.
+          // Previously all attachments were signed as images → PDF URLs were broken.
+          url: this.uploadService.generateSignedUrl(
+            a.storageKey,
+            300,
+            a.mimeType,
+          ),
           mimeType: a.mimeType,
           uploadedAt: a.uploadedAt,
         }))
@@ -181,7 +187,12 @@ export class PatientsService {
       id: attachment.id,
       appointmentId: attachment.appointmentId ?? null,
       name: attachment.fileName,
-      url: this.uploadService.generateSignedUrl(attachment.storageKey, 300),
+      // FIX-4: Pass mimeType so PDFs get correct resource_type in their signed URL.
+      url: this.uploadService.generateSignedUrl(
+        attachment.storageKey,
+        300,
+        attachment.mimeType,
+      ),
       mimeType: attachment.mimeType,
       uploadedAt: attachment.uploadedAt,
     };

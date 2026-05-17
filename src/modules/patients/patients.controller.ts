@@ -69,7 +69,9 @@ export class PatientsController {
   }
 
   @Post(":patientId/attachments")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  // FIX-5: Added ClinicRole.DOCTOR so doctors using the workspace can upload files.
+  // Previously only DOCTOR_ADMIN could call this endpoint → workspace upload silently failed with 403.
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   @Permissions(Permission.VIEW_PATIENT_HISTORY)
   @UseInterceptors(
     FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }),
