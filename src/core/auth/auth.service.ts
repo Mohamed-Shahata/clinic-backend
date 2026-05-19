@@ -36,7 +36,14 @@ export class AuthService {
     private readonly authSessionService: AuthSessionService,
   ) {}
 
-  private async isClinicActive(clinicId: string): Promise<boolean> {
+  private async getClinicAccessStatus(clinicId: string): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        reason: "clinic_deactivated" | "subscription_expired";
+        message: string;
+      }
+  > {
     const clinic = await this.prisma.clinic.findUnique({
       where: { id: clinicId },
       select: {
@@ -45,16 +52,24 @@ export class AuthService {
       } as any,
     });
 
-    // 1) العيادة معطلة يدوياً من الـ super-admin
-    if (!(clinic as any)?.isActive) return false;
+    if (!(clinic as any)?.isActive) {
+      return {
+        ok: false,
+        reason: "clinic_deactivated",
+        message: "العيادة موقوفة مؤقتاً. تواصل مع الإدارة.",
+      };
+    }
 
-    // 2) الاشتراك منتهي أو غير موجود
     const sub = (clinic as any)?.subscription;
-    if (!sub) return false; // لا يوجد اشتراك على الإطلاق
-    if (sub.status !== "ACTIVE") return false;
-    if (new Date(sub.expiresAt) <= new Date()) return false;
+    if (!sub || sub.status !== "ACTIVE" || new Date(sub.expiresAt) <= new Date()) {
+      return {
+        ok: false,
+        reason: "subscription_expired",
+        message: "تم انتهاء مدة الباقة الخاصة بك. يرجى تجديد الاشتراك.",
+      };
+    }
 
-    return true;
+    return { ok: true };
   }
 
   async login(dto: LoginDto) {
@@ -105,9 +120,12 @@ export class AuthService {
         }
 
         // ── Clinic deactivated by super-admin ──────────────────────────────
-        if (!(await this.isClinicActive(membership.clinicId))) {
+        const clinicStatus = await this.getClinicAccessStatus(
+          membership.clinicId,
+        );
+        if (!clinicStatus.ok) {
           throw new UnauthorizedException(
-            "clinic_deactivated:العيادة موقوفة مؤقتاً. تواصل مع الإدارة.",
+            `${clinicStatus.reason}:${clinicStatus.message}`,
           );
         }
 
@@ -126,7 +144,8 @@ export class AuthService {
         const activeMemberships: typeof memberships = [];
         for (const m of memberships) {
           if (!m.isActive) continue; // account deactivated
-          if (!(await this.isClinicActive(m.clinicId))) continue; // clinic deactivated
+          const clinicStatus = await this.getClinicAccessStatus(m.clinicId);
+          if (!clinicStatus.ok) continue; // clinic deactivated / expired
           activeMemberships.push(m);
         }
 
@@ -139,8 +158,13 @@ export class AuthService {
               "account_deactivated:تم إلغاء تفعيل حسابك من قِبل الدكتور. تواصل مع الإدارة.",
             );
           }
+          const firstClinicStatus = await this.getClinicAccessStatus(
+            memberships[0].clinicId,
+          );
           throw new UnauthorizedException(
-            "clinic_deactivated:العيادة موقوفة مؤقتاً. تواصل مع الإدارة.",
+            firstClinicStatus.ok
+              ? "clinic_deactivated:العيادة موقوفة مؤقتاً. تواصل مع الإدارة."
+              : `${firstClinicStatus.reason}:${firstClinicStatus.message}`,
           );
         }
 
@@ -201,12 +225,12 @@ export class AuthService {
 
     if (payload?.clinicId) {
       // فحص تعطيل العيادة / انتهاء الاشتراك
-      const clinicOk = await this.isClinicActive(payload.clinicId);
-      if (!clinicOk) {
+      const clinicStatus = await this.getClinicAccessStatus(payload.clinicId);
+      if (!clinicStatus.ok) {
         // أبطل الجلسة الجديدة فوراً حتى لا تُستخدم
         await this.authSessionService.revokeClinicSessions(payload.clinicId);
         throw new UnauthorizedException(
-          "clinic_deactivated:العيادة موقوفة أو انتهى اشتراكها. تواصل مع الإدارة.",
+          `${clinicStatus.reason}:${clinicStatus.message}`,
         );
       }
 

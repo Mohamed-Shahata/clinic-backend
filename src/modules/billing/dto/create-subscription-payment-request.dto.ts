@@ -26,3 +26,15 @@ export class CreateSubscriptionPaymentRequestDto {
   @MaxLength(500)
   notes?: string;
 }
+
+export class CreatePublicSubscriptionPaymentRequestDto extends CreateSubscriptionPaymentRequestDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(180)
+  login!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  clinicSlug?: string;
+}

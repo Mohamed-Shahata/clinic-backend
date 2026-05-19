@@ -10,13 +10,17 @@ import {
 } from "@nestjs/common";
 import { ClinicRole } from "@prisma/client";
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
+import { Public } from "../../core/auth/decorators/public.decorator";
 import { Roles } from "../../core/auth/decorators/roles.decorator";
 import { Permissions } from "../../core/auth/rbac/permissions.decorator";
 import { Permission } from "../../core/auth/rbac/role-permissions";
 import { RequestUser } from "../../core/auth/types/request-user.type";
 import { BillingService } from "./billing.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
-import { CreateSubscriptionPaymentRequestDto } from "./dto/create-subscription-payment-request.dto";
+import {
+  CreatePublicSubscriptionPaymentRequestDto,
+  CreateSubscriptionPaymentRequestDto,
+} from "./dto/create-subscription-payment-request.dto";
 import { CreateSubscriptionPlanDto } from "./dto/create-subscription-plan.dto";
 import { ReviewSubscriptionPaymentRequestDto } from "./dto/review-subscription-payment-request.dto";
 import { UpdateInvoiceDto } from "./dto/update-invoice.dto";
@@ -36,6 +40,7 @@ export class BillingController {
   }
 
   @Get("subscription-plans")
+  @Public()
   listSubscriptionPlans() {
     return this.billingService.listSubscriptionPlans();
   }
@@ -91,6 +96,14 @@ export class BillingController {
     @Body() dto: CreateSubscriptionPaymentRequestDto,
   ) {
     return this.billingService.createSubscriptionPaymentRequest(user, dto);
+  }
+
+  @Public()
+  @Post("public/subscription-requests")
+  createPublicSubscriptionRequest(
+    @Body() dto: CreatePublicSubscriptionPaymentRequestDto,
+  ) {
+    return this.billingService.createPublicSubscriptionPaymentRequest(dto);
   }
 
   @Get("subscription-requests")
