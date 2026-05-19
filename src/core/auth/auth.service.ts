@@ -39,9 +39,22 @@ export class AuthService {
   private async isClinicActive(clinicId: string): Promise<boolean> {
     const clinic = await this.prisma.clinic.findUnique({
       where: { id: clinicId },
-      select: { isActive: true } as any,
+      select: {
+        isActive: true,
+        subscription: { select: { expiresAt: true, status: true } },
+      } as any,
     });
-    return (clinic as any)?.isActive === true;
+
+    // 1) العيادة معطلة يدوياً من الـ super-admin
+    if (!(clinic as any)?.isActive) return false;
+
+    // 2) الاشتراك منتهي أو غير موجود
+    const sub = (clinic as any)?.subscription;
+    if (!sub) return false; // لا يوجد اشتراك على الإطلاق
+    if (sub.status !== "ACTIVE") return false;
+    if (new Date(sub.expiresAt) <= new Date()) return false;
+
+    return true;
   }
 
   async login(dto: LoginDto) {
@@ -179,7 +192,38 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
-    return this.authSessionService.refresh(refreshToken);
+    // أولاً: جدد التوكن من الـ session store
+    const result = await this.authSessionService.refresh(refreshToken);
+
+    // ثانياً: تحقق أن العيادة والحساب لا يزالان فعّالين
+    // (يمكن أن يتغير الوضع بين آخر login وهذا الـ refresh)
+    const payload = this.authSessionService.decodePayload(result.accessToken);
+
+    if (payload?.clinicId) {
+      // فحص تعطيل العيادة / انتهاء الاشتراك
+      const clinicOk = await this.isClinicActive(payload.clinicId);
+      if (!clinicOk) {
+        // أبطل الجلسة الجديدة فوراً حتى لا تُستخدم
+        await this.authSessionService.revokeClinicSessions(payload.clinicId);
+        throw new UnauthorizedException(
+          "clinic_deactivated:العيادة موقوفة أو انتهى اشتراكها. تواصل مع الإدارة.",
+        );
+      }
+
+      // فحص تعطيل الحساب الفردي (doctor / receptionist)
+      const membership = await this.prisma.clinicUser.findFirst({
+        where: { userId: payload.sub, clinicId: payload.clinicId },
+        select: { isActive: true },
+      });
+      if (membership && !membership.isActive) {
+        await this.authSessionService.revokeUserSessions(payload.sub);
+        throw new UnauthorizedException(
+          "account_deactivated:تم إلغاء تفعيل حسابك. تواصل مع الإدارة.",
+        );
+      }
+    }
+
+    return result;
   }
 
   async logout(

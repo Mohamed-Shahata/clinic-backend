@@ -24,6 +24,17 @@ export class AuthSessionService {
     return ACCESS_TOKEN_TTL_SECONDS;
   }
 
+  /** Decode a signed JWT without verifying signature (payload only — for internal use after issueTokenPair). */
+  decodePayload(accessToken: string): (JwtPayload & { jti?: string }) | null {
+    try {
+      return this.jwtService.decode(accessToken) as JwtPayload & {
+        jti?: string;
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async issueTokenPair(payload: JwtPayload) {
     const accessJti = randomUUID();
     const refreshToken = randomBytes(48).toString("base64url");
