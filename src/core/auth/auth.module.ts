@@ -21,7 +21,9 @@ import { RbacService } from "./rbac/rbac.service";
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>("JWT_SECRET"),
-        signOptions: { expiresIn: "15m" },
+        // TTL يتطابق مع ACCESS_TOKEN_TTL_SECONDS في auth-session.service.ts
+        // الجلسة لا تنتهي من تلقاء نفسها — الـ revocation يتم عبر Redis فقط
+        signOptions: { expiresIn: "365d" },
       }),
     }),
   ],
