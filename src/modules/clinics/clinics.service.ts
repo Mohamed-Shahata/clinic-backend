@@ -19,6 +19,15 @@ export class ClinicsService {
     private readonly authSessionService: AuthSessionService,
   ) {}
 
+  private platformEmail(value?: string | null) {
+    const raw = value?.trim().toLowerCase();
+    if (!raw) return "";
+    const local = raw.includes("@") ? raw.split("@")[0] : raw;
+    const cleaned = local.replace(/[^a-z0-9._-]/g, "");
+    if (!cleaned) throw new ConflictException("Admin email username is required");
+    return `${cleaned}@clinic.com`;
+  }
+
   // PERF-07 / CODE-02 / CODE-04: getClinicRuntimeSettings removed.
   // isActive, logoUrl, workingHours are all in the Prisma schema — include them
   // directly in each query instead of making a second raw-SQL round-trip.
@@ -147,19 +156,10 @@ export class ClinicsService {
       let adminUser: { id: string; email: string; fullName: string } | null =
         null;
 
-      const adminLogin = (
-        dto.adminLogin ||
-        dto.adminEmail ||
-        dto.adminPhone ||
-        ""
-      ).trim();
-      const adminEmail = (
-        dto.adminEmail || (adminLogin.includes("@") ? adminLogin : "")
-      )
-        .trim()
-        .toLowerCase();
+      const adminLogin = (dto.adminLogin || dto.adminEmail || "").trim();
+      const adminEmail = this.platformEmail(dto.adminEmail || adminLogin);
       const adminPhone = normalizePhone(
-        dto.adminPhone || (!adminLogin.includes("@") ? adminLogin : "")
+        dto.adminPhone || (!adminLogin.includes("@") ? adminLogin : ""),
       );
 
       if (
@@ -180,27 +180,26 @@ export class ClinicsService {
             "Cannot assign a platform admin as clinic admin",
           );
         }
+        if (existingUser) {
+          if (adminEmail && (existingUser as any).email === adminEmail) {
+            throw new ConflictException("This email is already used");
+          }
+          if (adminPhone && (existingUser as any).phone === adminPhone) {
+            throw new ConflictException("This phone number is already used");
+          }
+          throw new ConflictException("This login is already used");
+        }
 
         const passwordHash = await hash(dto.adminPassword, 10);
-        const user = existingUser
-          ? await tx.user.update({
-              where: { id: existingUser.id },
-              data: {
-                fullName: dto.adminFullName.trim(),
-                passwordHash,
-                email: adminEmail || (existingUser as any).email,
-                phone: adminPhone || (existingUser as any).phone,
-              } as any,
-            })
-          : await tx.user.create({
-              data: {
-                email: adminEmail || null,
-                phone: adminPhone || null,
-                fullName: dto.adminFullName.trim(),
-                passwordHash,
-                isSuperAdmin: false,
-              } as any,
-            });
+        const user = await tx.user.create({
+          data: {
+            email: adminEmail || null,
+            phone: adminPhone || null,
+            fullName: dto.adminFullName.trim(),
+            passwordHash,
+            isSuperAdmin: false,
+          } as any,
+        });
 
         await tx.clinicUser.create({
           data: {

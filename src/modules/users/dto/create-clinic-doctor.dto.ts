@@ -1,19 +1,16 @@
 import {
-  IsEmail,
   IsEnum,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
-  ValidateIf,
 } from "class-validator";
 import { SubscriptionPeriod } from "../../clinics/dto/create-clinic.dto";
 
 export class CreateClinicDoctorDto {
-  // ✅ email optional - يكفي phone أو email على الأقل واحد
   @IsOptional()
-  @ValidateIf((o: CreateClinicDoctorDto) => !!o.email)
-  @IsEmail()
+  @IsString()
+  @MaxLength(120)
   email?: string;
 
   @IsOptional()

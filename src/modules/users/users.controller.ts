@@ -59,6 +59,19 @@ export class UsersController {
     return this.usersService.listClinicDoctors(user.clinicId);
   }
 
+  @Post("doctors")
+  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Permissions(Permission.MANAGE_CLINIC_STAFF)
+  async createDoctor(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CreateClinicDoctorDto,
+  ) {
+    if (!user.clinicId) {
+      throw new ForbiddenException("Clinic context required");
+    }
+    return this.usersService.createDoctor(user.clinicId, dto, user.userId);
+  }
+
   @Post("receptionists")
   @Roles(ClinicRole.DOCTOR_ADMIN)
   @Permissions(Permission.CREATE_RECEPTIONIST)

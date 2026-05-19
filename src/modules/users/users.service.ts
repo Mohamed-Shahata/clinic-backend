@@ -20,6 +20,38 @@ export class UsersService {
     private readonly authSessionService: AuthSessionService,
   ) {}
 
+  private platformEmail(value?: string | null) {
+    const raw = value?.trim().toLowerCase();
+    if (!raw) return null;
+    const local = raw.includes("@") ? raw.split("@")[0] : raw;
+    const cleaned = local.replace(/[^a-z0-9._-]/g, "");
+    if (!cleaned) throw new ConflictException("Email username is required");
+    return `${cleaned}@clinic.com`;
+  }
+
+  private async assertUniqueLogin(email: string | null, phone: string | null) {
+    if (!email && !phone) {
+      throw new ConflictException("Email username or phone is required");
+    }
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(email ? [{ email }] : []),
+          ...(phone ? [{ phone }] : []),
+        ],
+      } as any,
+      select: { email: true, phone: true },
+    });
+    if (!existing) return;
+    if (email && existing.email === email) {
+      throw new ConflictException("This email is already used");
+    }
+    if (phone && (existing as any).phone === phone) {
+      throw new ConflictException("This phone number is already used");
+    }
+    throw new ConflictException("This login is already used");
+  }
+
   async listPlatformDirectory(filters: {
     role?: ClinicRole;
     clinicId?: string;
@@ -70,65 +102,24 @@ export class UsersService {
     dto: CreateClinicDoctorDto,
     actorUserId: string,
   ) {
-    const normalizedEmail = dto.email?.toLowerCase().trim() || null;
+    const normalizedEmail = this.platformEmail(dto.email);
     const normalizedPhone = normalizePhone(dto.phone);
 
-    // ✅ لازم يكون في email أو phone على الأقل
-    if (!normalizedEmail && !normalizedPhone) {
-      throw new ConflictException(
-        "Email or phone is required to create a receptionist",
-      );
-    }
+    await this.assertUniqueLogin(normalizedEmail, normalizedPhone);
 
     const passwordHash = await hash(dto.password, 10);
     const fullName = dto.fullName.trim();
 
-    // ✅ البحث بـ email أو phone
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
-          ...(normalizedPhone ? [{ phone: normalizedPhone }] : []),
-        ],
+    const created = await this.prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        fullName,
+        passwordHash,
+        isSuperAdmin: false,
       } as any,
     });
-
-    let userId: string;
-
-    if (existingUser) {
-      if (existingUser.isSuperAdmin) {
-        throw new ForbiddenException(
-          "Cannot assign platform users as clinic staff",
-        );
-      }
-      const membership = await this.prisma.clinicUser.findUnique({
-        where: { clinicId_userId: { clinicId, userId: existingUser.id } },
-      });
-      if (membership) {
-        throw new ConflictException("This user already belongs to this clinic");
-      }
-      await this.prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          fullName,
-          passwordHash,
-          ...(normalizedEmail ? { email: normalizedEmail } : {}),
-          ...(normalizedPhone ? { phone: normalizedPhone } : {}),
-        } as any,
-      });
-      userId = existingUser.id;
-    } else {
-      const created = await this.prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          phone: normalizedPhone,
-          fullName,
-          passwordHash,
-          isSuperAdmin: false,
-        } as any,
-      });
-      userId = created.id;
-    }
+    const userId = created.id;
 
     const clinicUser = await this.prisma.clinicUser.create({
       data: {
@@ -164,6 +155,70 @@ export class UsersService {
       phone: (userRow as any).phone,
       fullName: userRow.fullName,
       role: ClinicRole.RECEPTIONIST,
+      clinicSlug: clinic.slug,
+      clinicName: clinic.name,
+    };
+  }
+
+  async createDoctor(
+    clinicId: string,
+    dto: CreateClinicDoctorDto,
+    actorUserId: string,
+  ) {
+    const normalizedEmail = this.platformEmail(dto.email);
+    const normalizedPhone = normalizePhone(dto.phone);
+
+    await this.assertUniqueLogin(normalizedEmail, normalizedPhone);
+
+    const passwordHash = await hash(dto.password, 10);
+    const fullName = dto.fullName.trim();
+    const created = await this.prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        fullName,
+        passwordHash,
+        isSuperAdmin: false,
+      } as any,
+    });
+
+    const clinicUser = await this.prisma.clinicUser.create({
+      data: {
+        clinicId,
+        userId: created.id,
+        role: DOCTOR_ROLE,
+        specialty: dto.specialty?.trim() || null,
+        isActive: true,
+      } as any,
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        clinicId,
+        actorId: actorUserId,
+        action: "CLINIC_DOCTOR_CREATED",
+        entityType: "User",
+        entityId: created.id,
+        meta: {
+          userId: created.id,
+          clinicUserId: clinicUser.id,
+          role: DOCTOR_ROLE,
+        },
+      },
+    });
+
+    const clinic = await this.prisma.clinic.findUniqueOrThrow({
+      where: { id: clinicId },
+    });
+
+    return {
+      id: created.id,
+      clinicUserId: clinicUser.id,
+      email: created.email,
+      phone: (created as any).phone,
+      fullName: created.fullName,
+      role: DOCTOR_ROLE,
+      specialty: clinicUser.specialty,
       clinicSlug: clinic.slug,
       clinicName: clinic.name,
     };

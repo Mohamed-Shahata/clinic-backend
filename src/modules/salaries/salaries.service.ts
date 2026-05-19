@@ -48,7 +48,7 @@ export class SalariesService {
   async getSalaryOverview(clinicId: string) {
     // ── جلب كل السكيرتيرات النشطات في العيادة ──────────────────────────
     const receptionists = await this.prisma.clinicUser.findMany({
-      where: { clinicId, role: "RECEPTIONIST", isActive: true },
+      where: { clinicId, role: "RECEPTIONIST" },
       include: {
         user: { select: { fullName: true, id: true } },
       },
@@ -94,6 +94,7 @@ export class SalariesService {
           clinicUserId: cu.id, // ← ده الـ ClinicUser.id مش User.id
           userId: cu.userId,
           fullName: cu.user.fullName,
+          isActive: cu.isActive,
           monthlyAmount: salary ? Number(salary.monthlyAmount) : null,
           dailyRate: Math.round(dailyRate * 100) / 100,
           accrued,
