@@ -1,4 +1,5 @@
 import {
+  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -29,12 +30,8 @@ export class CreateSubscriptionPaymentRequestDto {
 
 export class CreatePublicSubscriptionPaymentRequestDto extends CreateSubscriptionPaymentRequestDto {
   @IsString()
+  @IsEmail()
   @IsNotEmpty()
   @MaxLength(180)
   login!: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  clinicSlug?: string;
 }

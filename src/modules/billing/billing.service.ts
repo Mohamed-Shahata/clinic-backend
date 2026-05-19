@@ -16,7 +16,6 @@ import { UpdateInvoiceDto } from "./dto/update-invoice.dto";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UpdateSubscriptionPlanDto } from "./dto/update-subscription-plan.dto";
 import { CreatePublicSubscriptionPaymentRequestDto } from "./dto/create-subscription-payment-request.dto";
-import { normalizeLoginIdentifier } from "../../core/auth/phone.util";
 import { AuthSessionService } from "../../core/auth/auth-session.service";
 
 type InvoiceRow = {
@@ -217,35 +216,20 @@ export class BillingService {
   async createPublicSubscriptionPaymentRequest(
     dto: CreatePublicSubscriptionPaymentRequestDto,
   ) {
-    const normalized = normalizeLoginIdentifier(dto.login);
-    if (!normalized) throw new BadRequestException("Invalid clinic contact");
-
-    const user =
-      normalized.kind === "phone"
-        ? await this.prisma.user.findUnique({
-            where: { phone: normalized.value },
-          })
-        : await this.prisma.user.findUnique({
-            where: { email: normalized.value },
-          });
-    if (!user) throw new NotFoundException("Clinic contact not found");
+    const email = dto.login.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) throw new NotFoundException("Doctor email not found");
 
     const memberships = await this.prisma.clinicUser.findMany({
       where: {
         userId: user.id,
         role: "DOCTOR_ADMIN" as any,
-        ...(dto.clinicSlug?.trim()
-          ? { clinic: { slug: dto.clinicSlug.trim().toLowerCase() } }
-          : {}),
       },
       include: { clinic: { include: { subscription: true } } },
       orderBy: { createdAt: "asc" },
     });
     if (memberships.length === 0) {
       throw new NotFoundException("No clinic admin account found");
-    }
-    if (memberships.length > 1 && !dto.clinicSlug?.trim()) {
-      throw new BadRequestException("Clinic code is required for this account");
     }
 
     const membership = memberships[0];
