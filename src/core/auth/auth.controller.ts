@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Patch, UseGuards } from "@nestjs/common";
-import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
+import { Throttle } from "@nestjs/throttler";
 import { CurrentUser } from "./decorators/current-user.decorator";
 import { Public } from "./decorators/public.decorator";
 import { LoginDto } from "./dto/login.dto";
@@ -18,14 +18,16 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ login: { ttl: 60_000, limit: 5 } })
+  // FIX: Auth endpoints use the strict 10 requests/minute IP limit.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post("login")
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Public()
+  // FIX: Refresh is an auth endpoint and must share the strict rate limit.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
     return this.authService.refresh(body.refreshToken);
@@ -47,12 +49,16 @@ export class AuthController {
   // ─── Forgot Password (public) ──────────────────────────────────────────────
 
   @Public()
+  // FIX: Password reset request is public and sensitive, so it shares strict auth throttling.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post("forgot-password/request")
   async forgotPasswordRequest(@Body() dto: ForgotPasswordRequestDto) {
     return this.authService.requestForgotPassword(dto);
   }
 
   @Public()
+  // FIX: Password reset submission is public and sensitive, so it shares strict auth throttling.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post("forgot-password/reset")
   async forgotPasswordReset(@Body() dto: ForgotPasswordResetDto) {
     return this.authService.resetForgotPassword(dto);

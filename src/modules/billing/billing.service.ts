@@ -562,33 +562,64 @@ export class BillingService {
   async list(user: RequestUser, cursor?: string, limit = 50) {
     if (!user.clinicId) throw new ForbiddenException("Clinic context required");
 
-    // PERF-04: cursor-based pagination (was hardcoded LIMIT 100 with no OFFSET)
     const pageLimit = Math.min(Math.max(1, limit), 100);
+    // FIX: Cursor lookup is clinic-scoped; a cursor from another clinic cannot affect results.
+    const invoices = await this.prisma.invoice.findMany({
+      where: { clinicId: user.clinicId },
+      include: { patient: { select: { id: true, code: true, fullName: true } } },
+      orderBy: { createdAt: "desc" },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: pageLimit,
+    });
 
-    if (cursor) {
-      return this.prisma.$queryRaw<InvoiceView[]>`
-        SELECT
-          i.*,
-          json_build_object('id', p.id, 'code', p.code, 'fullName', p."fullName") AS patient
-        FROM "Invoice" i
-        LEFT JOIN "Patient" p ON p.id = i."patientId"
-        WHERE i."clinicId" = ${user.clinicId}
-          AND i."createdAt" < (SELECT "createdAt" FROM "Invoice" WHERE id = ${cursor} LIMIT 1)
-        ORDER BY i."createdAt" DESC
-        LIMIT ${pageLimit}
-      `;
+    return invoices;
+  }
+
+  async exportInvoicesCsv(user: RequestUser, from?: string, to?: string) {
+    if (!user.clinicId) throw new ForbiddenException("Clinic context required");
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+    if (fromDate && Number.isNaN(fromDate.getTime())) {
+      throw new BadRequestException("Invalid from date");
+    }
+    if (toDate && Number.isNaN(toDate.getTime())) {
+      throw new BadRequestException("Invalid to date");
     }
 
-    return this.prisma.$queryRaw<InvoiceView[]>`
-      SELECT
-        i.*,
-        json_build_object('id', p.id, 'code', p.code, 'fullName', p."fullName") AS patient
-      FROM "Invoice" i
-      LEFT JOIN "Patient" p ON p.id = i."patientId"
-      WHERE i."clinicId" = ${user.clinicId}
-      ORDER BY i."createdAt" DESC
-      LIMIT ${pageLimit}
-    `;
+    // FIX: Invoice CSV export is limited to the actor's clinic and optional date range.
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        clinicId: user.clinicId,
+        ...(fromDate || toDate
+          ? { createdAt: { ...(fromDate ? { gte: fromDate } : {}), ...(toDate ? { lte: toDate } : {}) } }
+          : {}),
+      },
+      include: { patient: { select: { code: true, fullName: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return toCsv(
+      [
+        "id",
+        "patientCode",
+        "patientName",
+        "totalAmount",
+        "paidAmount",
+        "paymentMethod",
+        "status",
+        "createdAt",
+      ],
+      invoices.map((invoice) => [
+        invoice.id,
+        invoice.patient.code,
+        invoice.patient.fullName,
+        invoice.totalAmount.toString(),
+        invoice.paidAmount.toString(),
+        invoice.paymentMethod,
+        invoice.status,
+        invoice.createdAt.toISOString(),
+      ]),
+    );
   }
 
   async doctorEarnings(user: RequestUser) {
@@ -1084,4 +1115,12 @@ export class BillingService {
     `;
     return rows[0] ?? null;
   }
+}
+
+function toCsv(headers: string[], rows: Array<Array<string | number>>) {
+  const escape = (value: string | number) => {
+    const text = String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
 }

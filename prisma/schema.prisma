@@ -174,7 +174,9 @@ model Patient {
   fullName     String
   phone        String?
   dateOfBirth  DateTime?
+  /// @deprecated Use medicalHistory for structured patient history.
   medicalNotes String?
+  medicalHistory Json?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

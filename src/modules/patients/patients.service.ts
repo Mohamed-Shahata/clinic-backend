@@ -1,9 +1,21 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { ClinicRole } from "@prisma/client";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ClinicRole, Prisma } from "@prisma/client";
 import { PrismaService } from "../../core/database/prisma.service";
 import { RequestUser } from "../../core/auth/types/request-user.type";
 import { CreatePatientDto } from "./dto/create-patient.dto";
 import { UploadService } from "../../core/upload/upload.service";
+
+type PatientWithHistory = {
+  id?: string;
+  code?: string;
+  fullName?: string;
+  phone?: string | null;
+  dateOfBirth?: Date | null;
+  medicalNotes?: string | null;
+  medicalHistory?: Prisma.JsonValue | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
 
 @Injectable()
 export class PatientsService {
@@ -12,8 +24,15 @@ export class PatientsService {
     private readonly uploadService: UploadService,
   ) {}
 
-  async listByClinic(user: RequestUser, q?: string, filterDoctorId?: string) {
+  async listByClinic(
+    user: RequestUser,
+    q?: string,
+    filterDoctorId?: string,
+    cursor?: string,
+    limit = 50,
+  ) {
     const { clinicId, userId, role } = user;
+    if (!clinicId) throw new ForbiddenException("Clinic context required");
     const query = q?.trim();
 
     const searchFilter = query
@@ -38,8 +57,11 @@ export class PatientsService {
     }
 
     const includeMedicalNotes = role !== ClinicRole.RECEPTIONIST;
+    const pageLimit = Math.min(Math.max(Number.isFinite(limit) ? limit : 50, 1), 100);
 
-    return this.prisma.patient.findMany({
+    // FIX: Replace fixed 200-row cap with cursor pagination for large clinics.
+    // FIX: Prisma Client may be stale until migration/generate runs; cast only for new additive field.
+    const patients = (await (this.prisma.patient as any).findMany({
       where: { clinicId, ...ownershipFilter, ...searchFilter },
       select: {
         id: true,
@@ -50,14 +72,23 @@ export class PatientsService {
         phone: true,
         dateOfBirth: true,
         medicalNotes: includeMedicalNotes,
+        medicalHistory: includeMedicalNotes,
         createdAt: true,
         updatedAt: true,
       },
       orderBy: { createdAt: "desc" },
-      // PERF-04: Hard cap to prevent unbounded result sets.
-      // For clinics with >500 patients, use cursor-based pagination instead.
-      take: 200,
-    });
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: pageLimit + 1,
+    })) as PatientWithHistory[];
+
+    const hasMore = patients.length > pageLimit;
+    const data = patients.slice(0, pageLimit).map((patient) =>
+      this.mergeMedicalHistory(patient, includeMedicalNotes),
+    );
+    return {
+      data,
+      nextCursor: hasMore ? data[data.length - 1]?.id ?? null : null,
+    };
   }
 
   async getDetails(clinicId: string, patientId: string, user: RequestUser) {
@@ -68,7 +99,8 @@ export class PatientsService {
     // an identical raw SQL query right after — double-fetching the same rows.
     // We now use the Prisma include's appointmentId field directly (it exists
     // in the schema). The raw SQL is removed.
-    const patient = await this.prisma.patient.findFirst({
+    // FIX: Prisma Client may be stale until migration/generate runs; cast only for new additive field.
+    const patient = await (this.prisma.patient as any).findFirst({
       where: { id: patientId, clinicId },
       select: {
         id: true,
@@ -79,6 +111,7 @@ export class PatientsService {
         phone: true,
         dateOfBirth: true,
         medicalNotes: includeMedicalNotes,
+        medicalHistory: includeMedicalNotes,
         createdAt: true,
         updatedAt: true,
         appointments: {
@@ -143,7 +176,11 @@ export class PatientsService {
         }))
       : [];
 
-    return { ...patient, attachments };
+    // FIX: Merge structured medical history with legacy medicalNotes for backward compatibility.
+    return {
+      ...this.mergeMedicalHistory(patient, includeMedicalNotes),
+      attachments,
+    };
   }
 
   async countAttachments(clinicId: string, patientId: string): Promise<number> {
@@ -202,7 +239,8 @@ export class PatientsService {
     const { clinicId, userId, role } = user;
     const includeMedicalNotes = role !== ClinicRole.RECEPTIONIST;
 
-    return this.prisma.patient.create({
+    // FIX: Prisma Client may be stale until migration/generate runs; cast only for new additive field.
+    return (this.prisma.patient as any).create({
       data: {
         clinicId: clinicId!,
         createdById: userId,
@@ -211,8 +249,49 @@ export class PatientsService {
         phone: dto.phone,
         dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
         medicalNotes: includeMedicalNotes ? dto.medicalNotes : undefined,
+        // FIX: Store additive structured medical history without removing legacy notes.
+        medicalHistory:
+          includeMedicalNotes && dto.medicalHistory
+            ? this.normalizeMedicalHistory(dto.medicalHistory)
+            : undefined,
       },
     });
+  }
+
+  async exportCsv(user: RequestUser) {
+    const { clinicId, role } = user;
+    if (!clinicId) throw new ForbiddenException("Clinic context required");
+    const includeMedicalNotes = role !== ClinicRole.RECEPTIONIST;
+    // FIX: CSV export is clinic-scoped and bounded to the authenticated clinic.
+    // FIX: Prisma Client may be stale until migration/generate runs; cast only for new additive field.
+    const patients = (await (this.prisma.patient as any).findMany({
+      where: { clinicId },
+      select: {
+        code: true,
+        fullName: true,
+        phone: true,
+        dateOfBirth: true,
+        medicalNotes: includeMedicalNotes,
+        medicalHistory: includeMedicalNotes,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    })) as PatientWithHistory[];
+
+    return toCsv(
+      ["code", "fullName", "phone", "dateOfBirth", "medicalNotes", "createdAt"],
+      patients.map((patient) => {
+        const merged = this.mergeMedicalHistory(patient, includeMedicalNotes);
+        return [
+          patient.code ?? "",
+          patient.fullName ?? "",
+          patient.phone ?? "",
+          patient.dateOfBirth?.toISOString() ?? "",
+          includeMedicalNotes ? merged.medicalNotes ?? "" : "",
+          patient.createdAt?.toISOString() ?? "",
+        ];
+      }),
+    );
   }
 
   /**
@@ -277,6 +356,68 @@ export class PatientsService {
     });
     if (!patient) throw new NotFoundException("Patient not found");
   }
+
+  private normalizeMedicalHistory(value: {
+    chronic?: string[];
+    allergies?: string[];
+    permanentMeds?: string[];
+    notes?: string;
+  }): Prisma.JsonObject {
+    return {
+      chronic: value.chronic ?? [],
+      allergies: value.allergies ?? [],
+      permanentMeds: value.permanentMeds ?? [],
+      notes: value.notes ?? "",
+    };
+  }
+
+  private mergeMedicalHistory<T extends { medicalNotes?: string | null; medicalHistory?: Prisma.JsonValue | null }>(
+    patient: T,
+    includeMedicalNotes: boolean,
+  ): T & {
+    medicalHistory?: {
+      chronic: string[];
+      allergies: string[];
+      permanentMeds: string[];
+      notes: string;
+    } | null;
+  } {
+    if (!includeMedicalNotes) return patient as T & {
+      medicalHistory?: {
+        chronic: string[];
+        allergies: string[];
+        permanentMeds: string[];
+        notes: string;
+      } | null;
+    };
+    const raw =
+      patient.medicalHistory && typeof patient.medicalHistory === "object" && !Array.isArray(patient.medicalHistory)
+        ? patient.medicalHistory
+        : {};
+    const record = raw as Record<string, unknown>;
+    const structured = {
+      chronic: Array.isArray(record.chronic) ? record.chronic.filter((v): v is string => typeof v === "string") : [],
+      allergies: Array.isArray(record.allergies) ? record.allergies.filter((v): v is string => typeof v === "string") : [],
+      permanentMeds: Array.isArray(record.permanentMeds) ? record.permanentMeds.filter((v): v is string => typeof v === "string") : [],
+      notes:
+        typeof record.notes === "string"
+          ? record.notes
+          : patient.medicalNotes ?? "",
+    };
+    return {
+      ...patient,
+      medicalHistory: structured,
+      medicalNotes: patient.medicalNotes ?? structured.notes,
+    };
+  }
+}
+
+function toCsv(headers: string[], rows: Array<Array<string | number>>) {
+  const escape = (value: string | number) => {
+    const text = String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
 }
 
 // ── Levenshtein helper (small strings only) ─────────────────────────────

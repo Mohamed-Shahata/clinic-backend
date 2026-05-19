@@ -7,7 +7,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { ClinicRole } from "@prisma/client";
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
 import { Public } from "../../core/auth/decorators/public.decorator";
@@ -137,6 +139,22 @@ export class BillingController {
     @Query("limit") limit?: string,
   ) {
     return this.billingService.list(user, cursor, limit ? Number(limit) : 50);
+  }
+
+  @Get("invoices/export/csv")
+  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Permissions(Permission.EXPORT_CLINIC_DATA)
+  async exportInvoicesCsv(
+    @CurrentUser() user: RequestUser,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @Res() res: Response,
+  ) {
+    const csv = await this.billingService.exportInvoicesCsv(user, from, to);
+    // FIX: Stream CSV with attachment headers for clinic-scoped invoice export.
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="invoices.csv"');
+    res.send(csv);
   }
 
   @Get("doctor-monthly-stats")

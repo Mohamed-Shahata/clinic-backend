@@ -19,13 +19,14 @@ import { SalariesModule } from "./modules/salaries/salaries.module";
 import { ComplaintsModule } from "./modules/complaints/complaints.module";
 import { SiteRatingModule } from "./modules/site-rating/site-rating.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
+import { AuditLogsModule } from "./modules/audit-logs/audit-logs.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([
-      { name: "login", ttl: 60_000, limit: 5 },
-      { name: "otp", ttl: 60_000, limit: 3 },
+      // FIX: Standard API limit; auth endpoints override this with a stricter bucket.
+      { ttl: 60_000, limit: 100 },
     ]),
     CacheModule.register({ isGlobal: true, ttl: 0 }),
     PrismaModule,
@@ -42,6 +43,7 @@ import { NotificationsModule } from "./modules/notifications/notifications.modul
     InstallmentsModule,
     SalariesModule,
     NotificationsModule,
+    AuditLogsModule,
     ComplaintsModule,
     SiteRatingModule,
   ],

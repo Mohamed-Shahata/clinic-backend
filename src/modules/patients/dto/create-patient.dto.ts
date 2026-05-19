@@ -6,11 +6,14 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  IsArray,
+  ValidateNested,
   Validate,
   ValidatorConstraint,
   ValidatorConstraintInterface,
   ValidationArguments,
 } from "class-validator";
+import { Type } from "class-transformer";
 
 /**
  * الاسم يجب أن يكون ثلاثياً على الأقل (3 كلمات مفصولة بمسافة).
@@ -27,6 +30,28 @@ class IsTripleNameConstraint implements ValidatorConstraintInterface {
   defaultMessage(_args: ValidationArguments): string {
     return "الاسم يجب أن يكون ثلاثياً على الأقل (مثال: محمد علي حسن)";
   }
+}
+
+export class MedicalHistoryDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  chronic?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allergies?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  permanentMeds?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
 }
 
 export class CreatePatientDto {
@@ -60,4 +85,9 @@ export class CreatePatientDto {
   @IsString()
   @MaxLength(4000)
   medicalNotes?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MedicalHistoryDto)
+  medicalHistory?: MedicalHistoryDto;
 }

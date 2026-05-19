@@ -11,6 +11,7 @@ export enum Permission {
   UPDATE_CLINIC_STATUS = "update:clinic_status",
   VIEW_PLATFORM_STATS = "view:platform_stats",
   MANAGE_PLATFORM_USERS = "manage:platform_users",
+  VIEW_AUDIT_LOGS = "view:audit_logs",
 
   // Doctor Admin Permissions
   MANAGE_CLINIC_STAFF = "manage:clinic_staff",
@@ -21,6 +22,7 @@ export enum Permission {
   UPDATE_CLINIC_PAYMENT_POLICY = "update:clinic_payment_policy",
   VIEW_CLINIC_REPORTS = "view:clinic_reports",
   VIEW_CLINIC_FINANCIALS = "view:clinic_financials",
+  EXPORT_CLINIC_DATA = "export:clinic_data",
 
   // Doctor Admin (acting as doctor) Permissions
   VIEW_OWN_SCHEDULE = "view:own_schedule",
@@ -55,6 +57,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.UPDATE_CLINIC_STATUS,
     Permission.VIEW_PLATFORM_STATS,
     Permission.MANAGE_PLATFORM_USERS,
+    Permission.VIEW_AUDIT_LOGS,
   ],
 
   DOCTOR_ADMIN: [
@@ -67,6 +70,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.UPDATE_CLINIC_PAYMENT_POLICY,
     Permission.VIEW_CLINIC_REPORTS,
     Permission.VIEW_CLINIC_FINANCIALS,
+    Permission.EXPORT_CLINIC_DATA,
     Permission.CREATE_PATIENT,
     Permission.UPDATE_PATIENT_INFO,
     Permission.CREATE_APPOINTMENT,

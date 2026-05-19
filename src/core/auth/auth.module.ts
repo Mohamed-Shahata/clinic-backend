@@ -9,6 +9,7 @@ import { AuthSessionService } from "./auth-session.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { PermissionsGuard } from "./guards/permissions.guard";
+import { SuperAdminThrottlerGuard } from "./guards/super-admin-throttler.guard";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { RbacService } from "./rbac/rbac.service";
 
@@ -35,6 +36,7 @@ import { RbacService } from "./rbac/rbac.service";
     JwtStrategy,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: SuperAdminThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

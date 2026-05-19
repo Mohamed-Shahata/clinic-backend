@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { AppointmentStatus, ClinicRole } from "@prisma/client";
+import { AppointmentStatus, ClinicRole, Prisma } from "@prisma/client";
 import { PrismaService } from "../../core/database/prisma.service";
 import { RequestUser } from "../../core/auth/types/request-user.type";
 import { CreateAppointmentDto } from "./dto/create-appointment.dto";
@@ -93,7 +93,8 @@ export class AppointmentsService {
         status: {
           in: [AppointmentStatus.IN_QUEUE, AppointmentStatus.IN_PROGRESS],
         },
-        ...{ doctorId: user.userId },
+        // FIX: Receptionists need the whole clinic queue; doctors/admins see their own queue.
+        ...(user.role === ClinicRole.RECEPTIONIST ? {} : { doctorId: user.userId }),
       },
       include: {
         patient: {
@@ -127,6 +128,8 @@ export class AppointmentsService {
     }
 
     if (hasScheduledTime) {
+      // FIX: Enforce configured clinic working hours for scheduled appointments.
+      await this.ensureWithinWorkingHours(clinicId, startsAt, endsAt);
       await this.ensureNoConflictingAppointment(
         clinicId,
         dto.doctorId,
@@ -203,6 +206,12 @@ export class AppointmentsService {
     // LOGIC-02: Only run conflict check if time-sensitive fields actually changed
     const timeOrDoctorChanged = dto.doctorId || dto.startsAt || dto.endsAt;
     if (timeOrDoctorChanged) {
+      // FIX: Revalidate clinic working hours when appointment timing changes.
+      await this.ensureWithinWorkingHours(
+        clinicId,
+        updatedStartsAt,
+        updatedEndsAt,
+      );
       await this.ensureNoConflictingAppointment(
         clinicId,
         updatedDoctorId,
@@ -373,7 +382,8 @@ export class AppointmentsService {
       where: {
         clinicId,
         userId: doctorId,
-        role: { in: [ClinicRole.DOCTOR_ADMIN] },
+        // FIX: Restored DOCTOR role must be bookable as an appointment doctor.
+        role: { in: [ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR] },
         isActive: true,
       },
     });
@@ -383,6 +393,52 @@ export class AppointmentsService {
   private startOfToday(): Date {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  private async ensureWithinWorkingHours(
+    clinicId: string,
+    startsAt: Date,
+    endsAt: Date,
+  ) {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { workingHours: true },
+    });
+    const workingHours = clinic?.workingHours;
+    if (!workingHours || typeof workingHours !== "object" || Array.isArray(workingHours)) {
+      return;
+    }
+
+    const day = startsAt.getDay();
+    const schedule = (workingHours as Prisma.JsonObject)[String(day)];
+    if (!schedule || typeof schedule !== "object" || Array.isArray(schedule)) {
+      return;
+    }
+
+    const open = typeof schedule.open === "string" ? schedule.open : null;
+    const close = typeof schedule.close === "string" ? schedule.close : null;
+    if (!open || !close) return;
+
+    const openMinutes = this.parseTime(open);
+    const closeMinutes = this.parseTime(close);
+    if (openMinutes === null || closeMinutes === null) return;
+    if (startsAt.toDateString() !== endsAt.toDateString()) {
+      throw new BadRequestException("Appointment must start and end on the same day");
+    }
+
+    const startMinutes = startsAt.getHours() * 60 + startsAt.getMinutes();
+    const endMinutes = endsAt.getHours() * 60 + endsAt.getMinutes();
+    if (startMinutes < openMinutes || endMinutes > closeMinutes) {
+      throw new BadRequestException(
+        `Appointment must be within clinic working hours (${open}-${close})`,
+      );
+    }
+  }
+
+  private parseTime(value: string): number | null {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+    if (!match) return null;
+    return Number(match[1]) * 60 + Number(match[2]);
   }
 
   // PERF-01: This method is called from a @Cron() scheduler (appointments.scheduler.ts)

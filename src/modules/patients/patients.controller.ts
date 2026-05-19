@@ -5,11 +5,13 @@ import {
   Param,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
   UseGuards,
   BadRequestException,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ClinicRole } from "@prisma/client";
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
@@ -37,8 +39,28 @@ export class PatientsController {
     @CurrentUser() user: RequestUser,
     @Query("q") q?: string,
     @Query("doctorId") doctorId?: string,
+    @Query("cursor") cursor?: string,
+    @Query("limit") limit?: string,
   ) {
-    return this.patientsService.listByClinic(user, q, doctorId);
+    // FIX: Forward cursor pagination params to prevent fixed-size patient truncation.
+    return this.patientsService.listByClinic(
+      user,
+      q,
+      doctorId,
+      cursor,
+      limit ? Number(limit) : 50,
+    );
+  }
+
+  @Get("export/csv")
+  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Permissions(Permission.EXPORT_CLINIC_DATA)
+  async exportCsv(@CurrentUser() user: RequestUser, @Res() res: Response) {
+    const csv = await this.patientsService.exportCsv(user);
+    // FIX: Stream CSV with attachment headers for clinic-scoped patient export.
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="patients.csv"');
+    res.send(csv);
   }
 
   @Get("similar")
