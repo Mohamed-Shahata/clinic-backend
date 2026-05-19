@@ -63,9 +63,14 @@ export class AuthSessionService {
     );
     if (!raw) throw new UnauthorizedException("Invalid refresh token");
 
-    await this.cacheManager.del(this.refreshKey(refreshHash));
     const session = JSON.parse(raw) as RefreshSession;
-    return this.issueTokenPair(session.payload);
+
+    // SAFE ORDER: issue new pair FIRST, delete old token only after success.
+    // If issueTokenPair() throws (Redis down, JWT sign error, etc.),
+    // the old token remains valid — user can retry without losing their session.
+    const newPair = await this.issueTokenPair(session.payload);
+    await this.cacheManager.del(this.refreshKey(refreshHash));
+    return newPair;
   }
 
   async revokeRefreshToken(refreshToken?: string) {

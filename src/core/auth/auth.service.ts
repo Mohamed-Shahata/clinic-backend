@@ -61,7 +61,11 @@ export class AuthService {
     }
 
     const sub = (clinic as any)?.subscription;
-    if (!sub || sub.status !== "ACTIVE" || new Date(sub.expiresAt) <= new Date()) {
+    if (
+      !sub ||
+      sub.status !== "ACTIVE" ||
+      new Date(sub.expiresAt) <= new Date()
+    ) {
       return {
         ok: false,
         reason: "subscription_expired",
@@ -216,38 +220,17 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
-    // أولاً: جدد التوكن من الـ session store
-    const result = await this.authSessionService.refresh(refreshToken);
-
-    // ثانياً: تحقق أن العيادة والحساب لا يزالان فعّالين
-    // (يمكن أن يتغير الوضع بين آخر login وهذا الـ refresh)
-    const payload = this.authSessionService.decodePayload(result.accessToken);
-
-    if (payload?.clinicId) {
-      // فحص تعطيل العيادة / انتهاء الاشتراك
-      const clinicStatus = await this.getClinicAccessStatus(payload.clinicId);
-      if (!clinicStatus.ok) {
-        // أبطل الجلسة الجديدة فوراً حتى لا تُستخدم
-        await this.authSessionService.revokeClinicSessions(payload.clinicId);
-        throw new UnauthorizedException(
-          `${clinicStatus.reason}:${clinicStatus.message}`,
-        );
-      }
-
-      // فحص تعطيل الحساب الفردي (doctor / receptionist)
-      const membership = await this.prisma.clinicUser.findFirst({
-        where: { userId: payload.sub, clinicId: payload.clinicId },
-        select: { isActive: true },
-      });
-      if (membership && !membership.isActive) {
-        await this.authSessionService.revokeUserSessions(payload.sub);
-        throw new UnauthorizedException(
-          "account_deactivated:تم إلغاء تفعيل حسابك. تواصل مع الإدارة.",
-        );
-      }
-    }
-
-    return result;
+    // Subscription / clinic-active checks are intentionally NOT performed here.
+    //
+    // Architectural decision: subscription expiry and clinic deactivation block
+    // NEW logins only. An active session (refresh token already issued) should
+    // continue until the admin explicitly revokes it via revokeClinicSessions()
+    // or revokeUserSessions() — those flags ARE checked by the JWT guard on every
+    // API request, so a forced logout happens on the next protected call, not here.
+    //
+    // Checking expiresAt inside refresh() would log out a doctor at midnight the
+    // moment a subscription lapses, even if they're mid-consultation. That's wrong.
+    return this.authSessionService.refresh(refreshToken);
   }
 
   async logout(
