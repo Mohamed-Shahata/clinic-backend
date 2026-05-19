@@ -22,11 +22,11 @@ export class SalariesService {
 
     // ── تحقق إن الـ clinicUser موجود فعلاً في هذه العيادة ──────────────
     const cu = await this.prisma.clinicUser.findFirst({
-      where: { id: clinicUserId, clinicId },
+      where: { id: clinicUserId, clinicId, role: "RECEPTIONIST" },
     });
     if (!cu)
       throw new NotFoundException(
-        `ClinicUser ${clinicUserId} not found in clinic ${clinicId}`,
+        `Receptionist ${clinicUserId} not found in clinic ${clinicId}`,
       );
 
     await this.prisma.staffSalary.updateMany({
@@ -52,6 +52,7 @@ export class SalariesService {
       include: {
         user: { select: { fullName: true, id: true } },
       },
+      orderBy: { createdAt: "asc" },
     });
 
     this.logger.debug(

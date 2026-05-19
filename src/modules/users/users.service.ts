@@ -130,7 +130,7 @@ export class UsersService {
       userId = created.id;
     }
 
-    await this.prisma.clinicUser.create({
+    const clinicUser = await this.prisma.clinicUser.create({
       data: {
         clinicId,
         userId,
@@ -159,6 +159,7 @@ export class UsersService {
 
     return {
       id: userRow.id,
+      clinicUserId: clinicUser.id,
       email: userRow.email,
       phone: (userRow as any).phone,
       fullName: userRow.fullName,
