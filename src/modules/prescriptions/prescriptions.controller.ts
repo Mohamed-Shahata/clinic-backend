@@ -31,6 +31,11 @@ class SaveTemplateDto {
   title?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  style?: string; // "classic" | "modern" | "minimal"
+
+  @IsOptional()
   @IsObject()
   header?: object;
 

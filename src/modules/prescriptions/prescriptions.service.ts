@@ -123,7 +123,13 @@ export class PrescriptionsService {
   // CRIT-06: typed dto instead of Record<string, unknown>
   async createMedicationCatalog(
     user: RequestUser,
-    dto: { name: string; dose?: string; frequency?: string; duration?: string; notes?: string },
+    dto: {
+      name: string;
+      dose?: string;
+      frequency?: string;
+      duration?: string;
+      notes?: string;
+    },
   ) {
     this.requireDoctorCatalog(user);
     if (!dto.name?.trim()) throw new BadRequestException("name is required");
@@ -145,7 +151,13 @@ export class PrescriptionsService {
   async updateMedicationCatalog(
     user: RequestUser,
     id: string,
-    dto: { name?: string; dose?: string; frequency?: string; duration?: string; notes?: string },
+    dto: {
+      name?: string;
+      dose?: string;
+      frequency?: string;
+      duration?: string;
+      notes?: string;
+    },
   ) {
     this.requireDoctorCatalog(user);
     // HIGH-04: verify both clinicId AND doctorId — prevents cross-doctor edits
@@ -157,7 +169,8 @@ export class PrescriptionsService {
       data: {
         name: dto.name ? dto.name.trim() : undefined,
         dose: dto.dose !== undefined ? dto.dose.trim() : undefined,
-        frequency: dto.frequency !== undefined ? dto.frequency.trim() : undefined,
+        frequency:
+          dto.frequency !== undefined ? dto.frequency.trim() : undefined,
         duration: dto.duration !== undefined ? dto.duration.trim() : undefined,
         notes: dto.notes !== undefined ? dto.notes.trim() : undefined,
       },
@@ -253,35 +266,35 @@ export class PrescriptionsService {
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return cached;
 
-    const template = await (this.prisma as any).prescriptionTemplate.findUnique({
-      where: {
-        clinicId_doctorId: { clinicId: user.clinicId, doctorId: user.userId },
+    const template = await (this.prisma as any).prescriptionTemplate.findUnique(
+      {
+        where: {
+          clinicId_doctorId: { clinicId: user.clinicId, doctorId: user.userId },
+        },
       },
-    });
+    );
     const clinic = await this.prisma.clinic.findUnique({
       where: { id: user.clinicId },
     });
-    const result =
-      template ?? {
-        title: "Prescription",
-        header: {
-          clinicName: clinic?.name,
-          logoUrl: (clinic as any)?.logoUrl ?? null,
-        },
-        footer: { notes: "Get well soon" },
-      };
+    const result = template ?? {
+      title: "Prescription",
+      header: {
+        clinicName: clinic?.name,
+        logoUrl: (clinic as any)?.logoUrl ?? null,
+      },
+      footer: { notes: "Get well soon" },
+    };
     await this.cacheManager.set(cacheKey, result, 5 * 60 * 1000);
     return result;
   }
 
   async savePrescriptionTemplate(
     user: RequestUser,
-    dto: { title?: string; header?: object; footer?: object },
+    dto: { title?: string; style?: string; header?: object; footer?: object },
   ) {
     this.requireDoctorCatalog(user);
-    // DATA-05: Use a single transaction — delete all old templates then create one.
-    // Previously did updateMany(isDefault=false) + create, leaving unlimited stale rows.
     const title = String(dto.title ?? "Prescription").trim();
+    const style = dto.style ?? "classic";
     const header = JSON.parse(JSON.stringify(dto.header ?? {}));
     const footer = JSON.parse(JSON.stringify(dto.footer ?? {}));
 
@@ -290,14 +303,14 @@ export class PrescriptionsService {
         clinicId_doctorId: { clinicId: user.clinicId, doctorId: user.userId },
       },
       create: {
-          clinicId: user.clinicId,
-          doctorId: user.userId,
-          title,
-          header,
-          footer,
-          isDefault: true,
+        clinicId: user.clinicId,
+        doctorId: user.userId,
+        title,
+        header: { ...header, style },
+        footer,
+        isDefault: true,
       },
-      update: { title, header, footer, isDefault: true },
+      update: { title, header: { ...header, style }, footer, isDefault: true },
     });
     await this.cacheManager.del(`template:${user.userId}`);
     return result;
