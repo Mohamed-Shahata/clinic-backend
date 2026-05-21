@@ -566,7 +566,9 @@ export class BillingService {
     // FIX: Cursor lookup is clinic-scoped; a cursor from another clinic cannot affect results.
     const invoices = await this.prisma.invoice.findMany({
       where: { clinicId: user.clinicId },
-      include: { patient: { select: { id: true, code: true, fullName: true } } },
+      include: {
+        patient: { select: { id: true, code: true, fullName: true } },
+      },
       orderBy: { createdAt: "desc" },
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: pageLimit,
@@ -591,7 +593,12 @@ export class BillingService {
       where: {
         clinicId: user.clinicId,
         ...(fromDate || toDate
-          ? { createdAt: { ...(fromDate ? { gte: fromDate } : {}), ...(toDate ? { lte: toDate } : {}) } }
+          ? {
+              createdAt: {
+                ...(fromDate ? { gte: fromDate } : {}),
+                ...(toDate ? { lte: toDate } : {}),
+              },
+            }
           : {}),
       },
       include: { patient: { select: { code: true, fullName: true } } },
@@ -600,25 +607,57 @@ export class BillingService {
 
     return toCsv(
       [
-        "id",
-        "patientCode",
-        "patientName",
-        "totalAmount",
-        "paidAmount",
-        "paymentMethod",
-        "status",
-        "createdAt",
+        "Invoice ID",
+        "Patient Code",
+        "Patient Name",
+        "Total (EGP)",
+        "Paid (EGP)",
+        "Remaining (EGP)",
+        "Payment Method",
+        "Status",
+        "Date",
+        "Time",
       ],
-      invoices.map((invoice) => [
-        invoice.id,
-        invoice.patient.code,
-        invoice.patient.fullName,
-        invoice.totalAmount.toString(),
-        invoice.paidAmount.toString(),
-        invoice.paymentMethod,
-        invoice.status,
-        invoice.createdAt.toISOString(),
-      ]),
+      invoices.map((invoice) => {
+        const total = Number(invoice.totalAmount);
+        const paid = Number(invoice.paidAmount);
+        const remaining = total - paid;
+        const dt = new Date(invoice.createdAt);
+
+        const methodMap: Record<string, string> = {
+          cash: "Cash",
+          CASH: "Cash",
+          vodafone_cash: "Vodafone Cash",
+          VODAFONE_CASH: "Vodafone Cash",
+          card: "Card",
+          CARD: "Card",
+        };
+        const statusMap: Record<string, string> = {
+          PAID: "Paid",
+          PARTIAL: "Partial Payment",
+          UNPAID: "Unpaid",
+        };
+
+        return [
+          invoice.id,
+          invoice.patient.code,
+          invoice.patient.fullName,
+          total.toFixed(2),
+          paid.toFixed(2),
+          remaining.toFixed(2),
+          methodMap[invoice.paymentMethod] ?? invoice.paymentMethod,
+          statusMap[invoice.status] ?? invoice.status,
+          dt.toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          }),
+          dt.toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        ];
+      }),
     );
   }
 
