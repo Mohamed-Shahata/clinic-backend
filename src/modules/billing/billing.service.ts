@@ -1154,6 +1154,189 @@ export class BillingService {
     `;
     return rows[0] ?? null;
   }
+
+  // ────────────────────────────────────────────────────────────
+  // SETTLEMENT — per doctor per month
+  // ────────────────────────────────────────────────────────────
+
+  async listSettlements(user: RequestUser, month?: string) {
+    if (!user.clinicId) throw new ForbiddenException("Clinic context required");
+
+    const targetMonth =
+      month ??
+      (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      })();
+
+    // Get all doctors in clinic with their payment policy
+    const doctors = await this.prisma.clinicUser.findMany({
+      where: {
+        clinicId: user.clinicId,
+        role: { in: [ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR] },
+        isActive: true,
+      },
+      include: { user: true },
+    });
+
+    // Get or calculate revenue per doctor for this month
+    const [year, mon] = targetMonth.split("-").map(Number);
+    const startOfMonth = new Date(year, mon - 1, 1);
+    const endOfMonth = new Date(year, mon, 1);
+
+    const results = await Promise.all(
+      doctors.map(async (cu) => {
+        // Revenue from invoices this month
+        const invoices = await this.prisma.$queryRaw<
+          Array<{ totalAmount: string }>
+        >`
+          SELECT i."totalAmount"::text
+          FROM "Invoice" i
+          LEFT JOIN "Appointment" a ON a.id = i."appointmentId"
+          WHERE i."clinicId" = ${user.clinicId}
+            AND (
+              (i."appointmentId" IS NOT NULL AND a."doctorId" = ${cu.userId})
+              OR (i."appointmentId" IS NULL AND i."issuedById" = ${cu.userId})
+            )
+            AND i."createdAt" >= ${startOfMonth}
+            AND i."createdAt" < ${endOfMonth}
+        `;
+
+        const totalRevenue = invoices.reduce(
+          (s, r) => s + Number(r.totalAmount),
+          0,
+        );
+
+        const paymentMode = (cu as any).paymentMode as string | null;
+        const fixedRent = Number((cu as any).fixedMonthlyRent ?? 0);
+        const pct = Number((cu as any).adminPercentage ?? 0);
+
+        const clinicShare =
+          paymentMode === "FIXED_RENT"
+            ? fixedRent
+            : paymentMode === "PERCENTAGE"
+              ? totalRevenue * (pct / 100)
+              : 0;
+
+        const doctorNet = totalRevenue - clinicShare;
+
+        // Check if settlement record already exists
+        const existing = await (this.prisma as any).doctorSettlement.findUnique(
+          {
+            where: {
+              clinicId_doctorUserId_month: {
+                clinicId: user.clinicId,
+                doctorUserId: cu.userId,
+                month: targetMonth,
+              },
+            },
+          },
+        );
+
+        return {
+          doctorUserId: cu.userId,
+          doctorName: cu.user.fullName,
+          specialty: cu.specialty,
+          paymentMode,
+          fixedMonthlyRent: fixedRent,
+          adminPercentage: pct,
+          totalRevenue,
+          clinicShare,
+          doctorNet,
+          settlement: existing ?? null,
+          status: existing?.status ?? "NOT_SETTLED",
+          paidAmount: existing ? Number(existing.paidAmount) : 0,
+          month: targetMonth,
+        };
+      }),
+    );
+
+    return results;
+  }
+
+  async createOrUpdateSettlement(
+    user: RequestUser,
+    doctorUserId: string,
+    month: string,
+    dto: {
+      status: "PENDING" | "PAID" | "PARTIAL";
+      paidAmount?: number;
+      paymentMethod?: string;
+      notes?: string;
+    },
+  ) {
+    if (!user.clinicId) throw new ForbiddenException("Clinic context required");
+
+    // Recalculate amounts fresh
+    const [year, mon] = month.split("-").map(Number);
+    const startOfMonth = new Date(year, mon - 1, 1);
+    const endOfMonth = new Date(year, mon, 1);
+
+    const cu = await this.prisma.clinicUser.findUnique({
+      where: {
+        clinicId_userId: { clinicId: user.clinicId, userId: doctorUserId },
+      },
+      include: { user: true },
+    });
+    if (!cu) throw new NotFoundException("Doctor not found in clinic");
+
+    const invoices = await this.prisma.$queryRaw<
+      Array<{ totalAmount: string }>
+    >`
+      SELECT i."totalAmount"::text
+      FROM "Invoice" i
+      LEFT JOIN "Appointment" a ON a.id = i."appointmentId"
+      WHERE i."clinicId" = ${user.clinicId}
+        AND (
+          (i."appointmentId" IS NOT NULL AND a."doctorId" = ${doctorUserId})
+          OR (i."appointmentId" IS NULL AND i."issuedById" = ${doctorUserId})
+        )
+        AND i."createdAt" >= ${startOfMonth}
+        AND i."createdAt" < ${endOfMonth}
+    `;
+
+    const totalRevenue = invoices.reduce(
+      (s, r) => s + Number(r.totalAmount),
+      0,
+    );
+    const paymentMode = (cu as any).paymentMode as string | null;
+    const fixedRent = Number((cu as any).fixedMonthlyRent ?? 0);
+    const pct = Number((cu as any).adminPercentage ?? 0);
+    const clinicShare =
+      paymentMode === "FIXED_RENT"
+        ? fixedRent
+        : paymentMode === "PERCENTAGE"
+          ? totalRevenue * (pct / 100)
+          : 0;
+    const doctorNet = totalRevenue - clinicShare;
+
+    const data = {
+      clinicId: user.clinicId,
+      doctorUserId,
+      month,
+      totalRevenue,
+      clinicShare,
+      doctorNet,
+      status: dto.status,
+      paidAmount: dto.paidAmount ?? (dto.status === "PAID" ? clinicShare : 0),
+      paymentMethod: dto.paymentMethod ?? null,
+      notes: dto.notes ?? null,
+      paidAt:
+        dto.status === "PAID" || dto.status === "PARTIAL" ? new Date() : null,
+    };
+
+    return (this.prisma as any).doctorSettlement.upsert({
+      where: {
+        clinicId_doctorUserId_month: {
+          clinicId: user.clinicId,
+          doctorUserId,
+          month,
+        },
+      },
+      update: data,
+      create: data,
+    });
+  }
 }
 
 function toCsv(headers: string[], rows: Array<Array<string | number>>) {

@@ -196,4 +196,40 @@ export class BillingController {
   ) {
     return this.billingService.delete(user, invoiceId);
   }
+
+  // ──────────────────────────────────────────────
+  // SETTLEMENT ENDPOINTS
+  // ──────────────────────────────────────────────
+
+  @Get("settlements")
+  @Roles(ClinicRole.DOCTOR_ADMIN)
+  listSettlements(
+    @CurrentUser() user: RequestUser,
+    @Query("month") month?: string,
+  ) {
+    return this.billingService.listSettlements(user, month);
+  }
+
+  @Post("settlements/:doctorUserId")
+  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Permissions(Permission.MANAGE_CLINIC_STAFF)
+  createOrUpdateSettlement(
+    @CurrentUser() user: RequestUser,
+    @Param("doctorUserId") doctorUserId: string,
+    @Body()
+    dto: {
+      month: string;
+      status: "PENDING" | "PAID" | "PARTIAL";
+      paidAmount?: number;
+      paymentMethod?: string;
+      notes?: string;
+    },
+  ) {
+    return this.billingService.createOrUpdateSettlement(
+      user,
+      doctorUserId,
+      dto.month,
+      dto,
+    );
+  }
 }

@@ -516,3 +516,26 @@ model SiteRating {
   @@unique([clinicId, submittedBy])
   @@index([createdAt])
 }
+
+model DoctorSettlement {
+  id            String    @id @default(cuid())
+  clinicId      String
+  doctorUserId  String
+  month         String    // "YYYY-MM"
+  totalRevenue  Decimal   @db.Decimal(12, 2)
+  clinicShare   Decimal   @db.Decimal(12, 2)
+  doctorNet     Decimal   @db.Decimal(12, 2)
+  status        String    @default("PENDING") // PENDING | PAID | PARTIAL
+  paidAmount    Decimal   @db.Decimal(12, 2) @default(0)
+  paymentMethod String?
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, doctorUserId, month])
+  @@index([clinicId, month])
+  @@index([clinicId, doctorUserId])
+}
