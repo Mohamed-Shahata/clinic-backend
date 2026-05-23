@@ -1,25 +1,22 @@
 /**
  * prisma/seed.ts — Full Clinic CMS Seed
  * ─────────────────────────────────────
- * يغطي كل سيناريوهات السيستم:
  *  1. Super-admin
  *  2. خطط الاشتراك
- *  3. 3 عيادات (نشطة، منتهية، موقوفة)
- *  4. دكاتره وسيكريترة (نشطين وغير نشطين)
- *  5. 60 مريض بحالات متنوعة
- *  6. 200+ موعد بكل الحالات
- *  7. روشتات وأدوية
- *  8. فواتير بطرق دفع مختلفة
- *  9. خطط تقسيط مع دفعات
- * 10. كتالوج خدمات وأدوية وأشعة
- * 11. رواتب موظفين
- * 12. طلبات اشتراك
- * 13. إشعارات
- * 14. شكاوي
- * 15. تقييمات المنصة
- * 16. Audit logs
+ *  3. عيادة Alpha — دكتور واحد (DOCTOR_ADMIN) + سيكريتيرة
+ *  4. عيادة Beta  — اشتراك منتهي
+ *  5. عيادة Gamma — موقوفة
+ *  6. عيادة Delta — multi-doctor (DOCTOR_ADMIN + 2 DOCTOR) ← جديد
+ *  7. كتالوج خدمات وأدوية وأشعة
+ *  8. 60 مريض Alpha + 20 Beta + 30 Delta
+ *  9. 200+ موعد (Alpha + Delta)
+ * 10. روشتات وفواتير
+ * 11. تقسيط ورواتب
+ * 12. طلبات اشتراك / إشعارات / شكاوي / تقييمات / audit
+ * 13. DoctorSettlement نماذج تسوية
  *
  * تشغيل: npx prisma db seed
+ * reset كامل: npx prisma migrate reset  (يشغل الـ seed تلقائياً)
  * كلمة السر الموحدة: Password123!
  */
 
@@ -39,7 +36,6 @@ const PWD = "Password123!";
 const ph = () => hash(PWD, 10);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
 function daysAgo(n: number): Date {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -68,7 +64,6 @@ const randInt = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-
 async function main() {
   console.log("🌱  بدء الـ seed …\n");
 
@@ -113,7 +108,7 @@ async function main() {
   console.log("✅  خطط الاشتراك (3)");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 3. عيادة Alpha — نشطة، دكتور + سيكريتيرة × 2
+  // 3. عيادة Alpha — دكتور واحد نشطة
   // ══════════════════════════════════════════════════════════════════════════
   const clinicAlpha = await (prisma as any).clinic.upsert({
     where: { slug: "alpha-clinic" },
@@ -144,7 +139,6 @@ async function main() {
       passwordHash: await ph(),
     },
   });
-
   const recAlpha1 = await prisma.user.upsert({
     where: { email: "rec1.alpha@demo.test" },
     update: {},
@@ -155,7 +149,6 @@ async function main() {
       passwordHash: await ph(),
     },
   });
-
   const recAlpha2 = await prisma.user.upsert({
     where: { email: "rec2.alpha@demo.test" },
     update: {},
@@ -167,7 +160,6 @@ async function main() {
     },
   });
 
-  // ClinicUsers
   await (prisma as any).clinicUser.upsert({
     where: {
       clinicId_userId: { clinicId: clinicAlpha.id, userId: drAlpha.id },
@@ -198,7 +190,6 @@ async function main() {
       isActive: true,
     },
   });
-  // Deactivated receptionist scenario
   await (prisma as any).clinicUser.upsert({
     where: {
       clinicId_userId: { clinicId: clinicAlpha.id, userId: recAlpha2.id },
@@ -212,7 +203,6 @@ async function main() {
     },
   });
 
-  // Subscription — active
   await (prisma as any).clinicSubscription.upsert({
     where: { clinicId: clinicAlpha.id },
     update: {},
@@ -224,7 +214,6 @@ async function main() {
       status: "ACTIVE",
     },
   });
-
   console.log(`✅  عيادة Alpha → د. أحمد`);
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -241,7 +230,6 @@ async function main() {
       defaultLocale: "ar",
     },
   });
-
   const drBeta = await prisma.user.upsert({
     where: { email: "dr.beta@demo.test" },
     update: {},
@@ -252,7 +240,6 @@ async function main() {
       passwordHash: await ph(),
     },
   });
-
   const recBeta = await prisma.user.upsert({
     where: { email: "rec.beta@demo.test" },
     update: {},
@@ -263,7 +250,6 @@ async function main() {
       passwordHash: await ph(),
     },
   });
-
   await (prisma as any).clinicUser.upsert({
     where: { clinicId_userId: { clinicId: clinicBeta.id, userId: drBeta.id } },
     update: {},
@@ -290,8 +276,6 @@ async function main() {
       isActive: true,
     },
   });
-
-  // Expired subscription
   await (prisma as any).clinicSubscription.upsert({
     where: { clinicId: clinicBeta.id },
     update: {},
@@ -306,7 +290,7 @@ async function main() {
   console.log(`✅  عيادة Beta → د. منى`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 5. عيادة Gamma — موقوفة (isActive: false)
+  // 5. عيادة Gamma — موقوفة
   // ══════════════════════════════════════════════════════════════════════════
   const clinicGamma = await (prisma as any).clinic.upsert({
     where: { slug: "gamma-clinic" },
@@ -317,7 +301,6 @@ async function main() {
       isActive: false,
     },
   });
-
   const drGamma = await prisma.user.upsert({
     where: { email: "dr.gamma@demo.test" },
     update: {},
@@ -328,7 +311,6 @@ async function main() {
       passwordHash: await ph(),
     },
   });
-
   await (prisma as any).clinicUser.upsert({
     where: {
       clinicId_userId: { clinicId: clinicGamma.id, userId: drGamma.id },
@@ -344,7 +326,153 @@ async function main() {
   console.log(`✅  عيادة Gamma → موقوفة`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 6. كتالوج الخدمات
+  // 6. عيادة Delta — Multi-Doctor (جديد) ← المرحلة 2
+  // ══════════════════════════════════════════════════════════════════════════
+  const clinicDelta = await (prisma as any).clinic.upsert({
+    where: { slug: "delta-clinic" },
+    update: { isActive: true },
+    create: {
+      slug: "delta-clinic",
+      name: "مركز دلتا الطبي",
+      isActive: true,
+      timezone: "Africa/Cairo",
+      defaultLocale: "ar",
+      workingHours: {
+        sat: "8-20",
+        sun: "8-20",
+        mon: "8-20",
+        tue: "8-20",
+        wed: "8-20",
+        thu: "8-14",
+      },
+    },
+  });
+
+  // صاحب المركز — DOCTOR_ADMIN (باطنة)
+  const drDeltaAdmin = await prisma.user.upsert({
+    where: { email: "dr.delta.admin@demo.test" },
+    update: {},
+    create: {
+      email: "dr.delta.admin@demo.test",
+      phone: "+201007777777",
+      fullName: "د. كريم سامي العربي",
+      passwordHash: await ph(),
+    },
+  });
+  // دكتور عيون — DOCTOR بإيجار ثابت
+  const drDeltaEye = await prisma.user.upsert({
+    where: { email: "dr.delta.eye@demo.test" },
+    update: {},
+    create: {
+      email: "dr.delta.eye@demo.test",
+      phone: "+201008888888",
+      fullName: "د. هالة فريد النجار",
+      passwordHash: await ph(),
+    },
+  });
+  // دكتور أطفال — DOCTOR بنسبة
+  const drDeltaPeds = await prisma.user.upsert({
+    where: { email: "dr.delta.peds@demo.test" },
+    update: {},
+    create: {
+      email: "dr.delta.peds@demo.test",
+      phone: "+201009999999",
+      fullName: "د. سامر رضا الغزالي",
+      passwordHash: await ph(),
+    },
+  });
+  // سيكريتيرة المركز
+  const recDelta = await prisma.user.upsert({
+    where: { email: "rec.delta@demo.test" },
+    update: {},
+    create: {
+      email: "rec.delta@demo.test",
+      phone: "+201001234567",
+      fullName: "إيمان وليد سليمان",
+      passwordHash: await ph(),
+    },
+  });
+
+  await (prisma as any).clinicUser.upsert({
+    where: {
+      clinicId_userId: { clinicId: clinicDelta.id, userId: drDeltaAdmin.id },
+    },
+    update: {},
+    create: {
+      clinicId: clinicDelta.id,
+      userId: drDeltaAdmin.id,
+      role: ClinicRole.DOCTOR_ADMIN,
+      specialty: "الباطنة العامة",
+      consultationFee: 400,
+      followUpFee: 200,
+      paymentMode: "PERCENTAGE",
+      adminPercentage: 30,
+      subscriptionPeriod: "YEARLY",
+      isActive: true,
+    },
+  });
+  await (prisma as any).clinicUser.upsert({
+    where: {
+      clinicId_userId: { clinicId: clinicDelta.id, userId: drDeltaEye.id },
+    },
+    update: {},
+    create: {
+      clinicId: clinicDelta.id,
+      userId: drDeltaEye.id,
+      role: ClinicRole.DOCTOR,
+      specialty: "طب وجراحة العيون",
+      consultationFee: 350,
+      followUpFee: 150,
+      paymentMode: "FIXED_RENT",
+      fixedMonthlyRent: 8000,
+      isActive: true,
+    },
+  });
+  await (prisma as any).clinicUser.upsert({
+    where: {
+      clinicId_userId: { clinicId: clinicDelta.id, userId: drDeltaPeds.id },
+    },
+    update: {},
+    create: {
+      clinicId: clinicDelta.id,
+      userId: drDeltaPeds.id,
+      role: ClinicRole.DOCTOR,
+      specialty: "طب الأطفال",
+      consultationFee: 300,
+      followUpFee: 150,
+      paymentMode: "PERCENTAGE",
+      adminPercentage: 25,
+      isActive: true,
+    },
+  });
+  await (prisma as any).clinicUser.upsert({
+    where: {
+      clinicId_userId: { clinicId: clinicDelta.id, userId: recDelta.id },
+    },
+    update: {},
+    create: {
+      clinicId: clinicDelta.id,
+      userId: recDelta.id,
+      role: ClinicRole.RECEPTIONIST,
+      isActive: true,
+    },
+  });
+
+  await (prisma as any).clinicSubscription.upsert({
+    where: { clinicId: clinicDelta.id },
+    update: {},
+    create: {
+      clinicId: clinicDelta.id,
+      planId: planSixMonths.id,
+      startsAt: daysAgo(30),
+      expiresAt: daysFromNow(150),
+      status: "ACTIVE",
+    },
+  });
+  console.log(`✅  عيادة Delta (Multi-Doctor) → د. كريم + د. هالة + د. سامر`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 7. كتالوج الخدمات
   // ══════════════════════════════════════════════════════════════════════════
   const servicesAlpha = [
     { name: "كشف باطنة", price: 300, category: "كشف" },
@@ -358,12 +486,9 @@ async function main() {
     { name: "رسم قلب", price: 100, category: "إجراء" },
     { name: "قياس ضغط 24 ساعة", price: 400, category: "إجراء" },
   ];
-
   for (const s of servicesAlpha) {
     await (prisma as any).serviceCatalog
-      .create({
-        data: { clinicId: clinicAlpha.id, ...s },
-      })
+      .create({ data: { clinicId: clinicAlpha.id, ...s } })
       .catch(() => null);
   }
 
@@ -376,21 +501,32 @@ async function main() {
     { name: "خلع ضرس عقل", price: 800, category: "خلع" },
     { name: "تركيب تاج", price: 3500, category: "تركيبات" },
     { name: "تبييض أسنان", price: 2000, category: "تجميل" },
-    { name: "تقويم أسنان شفاف", price: 15000, category: "تقويم" },
-    { name: "زراعة أسنان", price: 12000, category: "زراعة" },
   ];
-
   for (const s of servicesBeta) {
     await (prisma as any).serviceCatalog
-      .create({
-        data: { clinicId: clinicBeta.id, ...s },
-      })
+      .create({ data: { clinicId: clinicBeta.id, ...s } })
+      .catch(() => null);
+  }
+
+  const servicesDelta = [
+    { name: "كشف باطنة", price: 400, category: "كشف" },
+    { name: "كشف عيون", price: 350, category: "كشف" },
+    { name: "كشف أطفال", price: 300, category: "كشف" },
+    { name: "قياس النظر", price: 100, category: "عيون" },
+    { name: "فحص قاع العين", price: 200, category: "عيون" },
+    { name: "تطعيمات الأطفال", price: 150, category: "أطفال" },
+    { name: "متابعة نمو الطفل", price: 200, category: "أطفال" },
+    { name: "موجات صوتية بطن", price: 250, category: "أشعة" },
+  ];
+  for (const s of servicesDelta) {
+    await (prisma as any).serviceCatalog
+      .create({ data: { clinicId: clinicDelta.id, ...s } })
       .catch(() => null);
   }
   console.log("✅  كتالوج الخدمات");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 7. كتالوج الأدوية
+  // 8. كتالوج الأدوية والأشعة
   // ══════════════════════════════════════════════════════════════════════════
   const medications = [
     {
@@ -468,42 +604,45 @@ async function main() {
       duration: "مستمر",
     },
   ];
-
   for (const m of medications) {
     await (prisma as any).medicationCatalog
       .create({
         data: { clinicId: clinicAlpha.id, doctorId: drAlpha.id, ...m },
       })
       .catch(() => null);
+    await (prisma as any).medicationCatalog
+      .create({
+        data: { clinicId: clinicDelta.id, doctorId: drDeltaAdmin.id, ...m },
+      })
+      .catch(() => null);
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 8. كتالوج الأشعة
-  // ══════════════════════════════════════════════════════════════════════════
   const imaging = [
     { name: "أشعة سينية صدر", category: "X-Ray" },
     { name: "موجات صوتية بطن كامل", category: "Ultrasound" },
-    { name: "موجات صوتية حوض", category: "Ultrasound" },
     { name: "CT صدر", category: "CT Scan" },
     { name: "CT بطن وحوض بتباين", category: "CT Scan" },
     { name: "MRI رأس", category: "MRI" },
-    { name: "MRI عمود فقري", category: "MRI" },
     { name: "قلب صدى", category: "Echo" },
     { name: "رسم قلب ECG", category: "ECG" },
-    { name: "فحص عيون قاع الشبكية", category: "Ophthalmology" },
+    { name: "فحص قاع الشبكية", category: "Ophthalmology" },
   ];
-
   for (const img of imaging) {
     await (prisma as any).imagingCatalog
       .create({
         data: { clinicId: clinicAlpha.id, doctorId: drAlpha.id, ...img },
       })
       .catch(() => null);
+    await (prisma as any).imagingCatalog
+      .create({
+        data: { clinicId: clinicDelta.id, doctorId: drDeltaAdmin.id, ...img },
+      })
+      .catch(() => null);
   }
   console.log("✅  كتالوج الأدوية والأشعة");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 9. 60 مريض لعيادة Alpha
+  // 9. مرضى
   // ══════════════════════════════════════════════════════════════════════════
   const arabicNames = [
     "محمد أحمد عبدالله",
@@ -568,11 +707,7 @@ async function main() {
     "صفاء محمد فايز",
   ];
 
-  const phones = Array.from(
-    { length: 60 },
-    (_, i) => `+2010${String(i + 10000000).slice(1)}`,
-  );
-
+  // Alpha patients (60)
   const patients: any[] = [];
   for (let i = 0; i < 60; i++) {
     const birthYear = randInt(1960, 2005);
@@ -587,27 +722,25 @@ async function main() {
           createdById: drAlpha.id,
           code: pc(i + 1),
           fullName: arabicNames[i],
-          phone: phones[i],
+          phone: `+2010${String(i + 10000000).slice(1)}`,
           dateOfBirth: new Date(birthYear, randInt(0, 11), randInt(1, 28)),
           medicalNotes:
             i % 5 === 0
               ? "حساسية من البنسلين"
               : i % 5 === 1
-                ? "مريض سكري نوع 2 — متابعة منتظمة"
+                ? "مريض سكري نوع 2"
                 : i % 5 === 2
                   ? "ضغط دم مرتفع"
                   : i % 7 === 0
-                    ? "مريض قلب — يأخذ أسبرين"
+                    ? "مريض قلب"
                     : null,
         },
       }));
     patients.push(patient);
   }
-  console.log(`✅  ${patients.length} مريض — عيادة Alpha`);
+  console.log(`✅  ${patients.length} مريض — Alpha`);
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 10. 20 مريض لعيادة Beta
-  // ══════════════════════════════════════════════════════════════════════════
+  // Beta patients (20)
   const betaPatients: any[] = [];
   for (let i = 0; i < 20; i++) {
     const existing = await (prisma as any).patient.findUnique({
@@ -627,15 +760,36 @@ async function main() {
       }));
     betaPatients.push(p);
   }
-  console.log(`✅  ${betaPatients.length} مريض — عيادة Beta`);
+  console.log(`✅  ${betaPatients.length} مريض — Beta`);
+
+  // Delta patients (30) — موزعين على 3 أطباء
+  const deltaPatients: any[] = [];
+  for (let i = 0; i < 30; i++) {
+    const existing = await (prisma as any).patient.findUnique({
+      where: { clinicId_code: { clinicId: clinicDelta.id, code: pc(i + 1) } },
+    });
+    const p =
+      existing ??
+      (await (prisma as any).patient.create({
+        data: {
+          clinicId: clinicDelta.id,
+          createdById: recDelta.id,
+          code: pc(i + 1),
+          fullName: arabicNames[i + 30],
+          phone: `+2012${String(i + 10000000).slice(1)}`,
+          medicalNotes: i % 4 === 0 ? "حساسية من البنسلين" : null,
+        },
+      }));
+    deltaPatients.push(p);
+  }
+  console.log(`✅  ${deltaPatients.length} مريض — Delta`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 11. مواعيد (Alpha) — 200+ موعد
+  // 10. مواعيد Alpha
   // ══════════════════════════════════════════════════════════════════════════
   const visitTypes = ["NEW_VISIT", "FOLLOW_UP", "EMERGENCY", "CONSULTATION"];
   const allAppts: any[] = [];
 
-  // ─ مواعيد ماضية (90 يوم الماضية) — COMPLETED / CANCELLED
   for (let day = 1; day <= 60; day++) {
     const numAppts = randInt(2, 5);
     for (let j = 0; j < numAppts; j++) {
@@ -663,7 +817,6 @@ async function main() {
     }
   }
 
-  // ─ مواعيد اليوم — IN_QUEUE / IN_PROGRESS / COMPLETED
   const todayStatuses: AppointmentStatus[] = [
     "COMPLETED",
     "COMPLETED",
@@ -673,14 +826,13 @@ async function main() {
     "IN_QUEUE",
   ];
   for (let i = 0; i < 6; i++) {
-    const patient = patients[i];
     const appt = await (prisma as any).appointment.create({
       data: {
         clinicId: clinicAlpha.id,
-        patientId: patient.id,
+        patientId: patients[i].id,
         doctorId: drAlpha.id,
-        startsAt: todayAt(9 + i * 1),
-        endsAt: todayAt(10 + i * 1),
+        startsAt: todayAt(9 + i),
+        endsAt: todayAt(10 + i),
         status: todayStatuses[i],
         visitType: i < 2 ? "FOLLOW_UP" : "NEW_VISIT",
       },
@@ -688,7 +840,6 @@ async function main() {
     allAppts.push(appt);
   }
 
-  // ─ مواعيد مستقبلية (30 يوم قادمة)
   for (let day = 1; day <= 14; day++) {
     const numAppts = randInt(1, 4);
     for (let j = 0; j < numAppts; j++) {
@@ -723,7 +874,58 @@ async function main() {
   );
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 12. روشتات
+  // 11. مواعيد Delta — موزعة على 3 أطباء
+  // ══════════════════════════════════════════════════════════════════════════
+  const deltaDocIds = [drDeltaAdmin.id, drDeltaEye.id, drDeltaPeds.id];
+  const deltaAppts: any[] = [];
+
+  for (let day = 1; day <= 30; day++) {
+    for (const doctorId of deltaDocIds) {
+      const numAppts = randInt(1, 3);
+      for (let j = 0; j < numAppts; j++) {
+        const patient = deltaPatients[randInt(0, deltaPatients.length - 1)];
+        const hour = randInt(8, 19);
+        const status = Math.random() < 0.82 ? "COMPLETED" : "CANCELLED";
+        const appt = await (prisma as any).appointment.create({
+          data: {
+            clinicId: clinicDelta.id,
+            patientId: patient.id,
+            doctorId,
+            startsAt: pastAt(day, hour),
+            endsAt: pastAt(day, hour + 1),
+            status,
+            visitType: rand(visitTypes),
+          },
+        });
+        deltaAppts.push(appt);
+      }
+    }
+  }
+
+  // مواعيد اليوم في Delta
+  for (let i = 0; i < 9; i++) {
+    const doctorId = deltaDocIds[i % 3];
+    const appt = await (prisma as any).appointment.create({
+      data: {
+        clinicId: clinicDelta.id,
+        patientId: deltaPatients[i].id,
+        doctorId,
+        startsAt: todayAt(9 + Math.floor(i / 3) * 2),
+        endsAt: todayAt(10 + Math.floor(i / 3) * 2),
+        status: i < 3 ? "COMPLETED" : i < 6 ? "IN_PROGRESS" : "IN_QUEUE",
+        visitType: "NEW_VISIT",
+      },
+    });
+    deltaAppts.push(appt);
+  }
+
+  const deltaCompleted = deltaAppts.filter((a) => a.status === "COMPLETED");
+  console.log(
+    `✅  ${deltaAppts.length} موعد (${deltaCompleted.length} مكتمل) — Delta`,
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 12. روشتات (Alpha)
   // ══════════════════════════════════════════════════════════════════════════
   const diagnosisList = [
     "ارتفاع ضغط الدم",
@@ -737,12 +939,11 @@ async function main() {
     "حمى",
     "التهاب اللوزتين",
   ];
-
   let rxCount = 0;
   for (const appt of completedAppts.slice(0, 80)) {
     if (Math.random() < 0.75) {
       const numMeds = randInt(1, 4);
-      const meds = Array.from({ length: numMeds }, (_, i) => ({
+      const meds = Array.from({ length: numMeds }, () => ({
         name: medications[randInt(0, medications.length - 1)].name,
         dose: rand(["500mg", "250mg", "20mg", "10mg", "5mg"]),
         frequency: rand(["مرة يومياً", "مرتين يومياً", "3 مرات يومياً"]),
@@ -764,12 +965,12 @@ async function main() {
       rxCount++;
     }
   }
-  console.log(`✅  ${rxCount} روشتة`);
+  console.log(`✅  ${rxCount} روشتة — Alpha`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 13. فواتير
+  // 13. فواتير (Alpha)
   // ══════════════════════════════════════════════════════════════════════════
-  const paymentMethods = ["CASH", "CARD", "INSURANCE", "TRANSFER"];
+  const paymentMethods = ["cash", "vodafone_cash", "transfer", "insurance"];
   let invoiceCount = 0;
   for (const appt of completedAppts.slice(0, 70)) {
     const isFollowUp = appt.visitType === "FOLLOW_UP";
@@ -788,7 +989,6 @@ async function main() {
           ]
         : []),
     ];
-    const paidFull = Math.random() < 0.8;
     await (prisma as any).invoice
       .create({
         data: {
@@ -797,9 +997,9 @@ async function main() {
           appointmentId: appt.id,
           issuedById: rand([drAlpha.id, recAlpha1.id]),
           totalAmount: total,
-          paidAmount: paidFull ? total : 0,
+          paidAmount: Math.random() < 0.8 ? total : 0,
           paymentMethod: rand(paymentMethods),
-          status: paidFull ? "PAID" : "PENDING",
+          status: Math.random() < 0.8 ? "PAID" : "PENDING",
           services,
           createdAt: appt.startsAt,
         },
@@ -807,10 +1007,75 @@ async function main() {
       .catch(() => null);
     invoiceCount++;
   }
-  console.log(`✅  ${invoiceCount} فاتورة`);
+  console.log(`✅  ${invoiceCount} فاتورة — Alpha`);
+
+  // فواتير Delta (موزعة على 3 أطباء)
+  let deltaInvoiceCount = 0;
+  for (const appt of deltaCompleted.slice(0, 50)) {
+    const fee =
+      appt.doctorId === drDeltaEye.id
+        ? 350
+        : appt.doctorId === drDeltaPeds.id
+          ? 300
+          : 400;
+    await (prisma as any).invoice
+      .create({
+        data: {
+          clinicId: clinicDelta.id,
+          patientId: appt.patientId,
+          appointmentId: appt.id,
+          issuedById: rand([recDelta.id, appt.doctorId]),
+          totalAmount: fee,
+          paidAmount: fee,
+          paymentMethod: rand(paymentMethods),
+          status: "PAID",
+          services: [{ name: "كشف", price: fee, qty: 1 }],
+          createdAt: appt.startsAt,
+        },
+      })
+      .catch(() => null);
+    deltaInvoiceCount++;
+  }
+  console.log(`✅  ${deltaInvoiceCount} فاتورة — Delta`);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 14. خطط التقسيط (12 خطة بسيناريوهات مختلفة)
+  // 14. DoctorSettlement نماذج تسوية لـ Delta — الشهر الماضي
+  // ══════════════════════════════════════════════════════════════════════════
+  const now = new Date();
+  const prevMonthNum = now.getMonth() === 0 ? 12 : now.getMonth();
+  const prevMonthYear =
+    now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const prevMonthStr = `${prevMonthYear}-${String(prevMonthNum).padStart(2, "0")}`;
+
+  // تسوية د. هالة (عيون) — مدفوعة كاملة
+  await prisma.$executeRaw`
+    INSERT INTO "DoctorSettlement" (id, "clinicId", "doctorUserId", month, "totalRevenue", "clinicShare", "doctorNet", status, "paidAmount", "paymentMethod", notes, "paidAt", "createdAt", "updatedAt")
+    VALUES (
+      ${`${clinicDelta.id}-${drDeltaEye.id}-${prevMonthStr}`},
+      ${clinicDelta.id}, ${drDeltaEye.id}, ${prevMonthStr},
+      12000, 8000, 4000,
+      'PAID', 8000, 'cash', 'تم الاستلام نقداً',
+      ${daysAgo(5)}, ${daysAgo(7)}, ${daysAgo(5)}
+    )
+    ON CONFLICT ("clinicId", "doctorUserId", month) DO NOTHING
+  `;
+
+  // تسوية د. سامر (أطفال) — جزئية
+  await prisma.$executeRaw`
+    INSERT INTO "DoctorSettlement" (id, "clinicId", "doctorUserId", month, "totalRevenue", "clinicShare", "doctorNet", status, "paidAmount", "paymentMethod", notes, "paidAt", "createdAt", "updatedAt")
+    VALUES (
+      ${`${clinicDelta.id}-${drDeltaPeds.id}-${prevMonthStr}`},
+      ${clinicDelta.id}, ${drDeltaPeds.id}, ${prevMonthStr},
+      8000, 2000, 6000,
+      'PARTIAL', 1000, 'transfer', 'دفع جزء — الباقي الأسبوع القادم',
+      ${daysAgo(3)}, ${daysAgo(7)}, ${daysAgo(3)}
+    )
+    ON CONFLICT ("clinicId", "doctorUserId", month) DO NOTHING
+  `;
+  console.log("✅  نماذج DoctorSettlement — Delta");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 15. تقسيط ورواتب
   // ══════════════════════════════════════════════════════════════════════════
   const installmentTitles = [
     "عملية ضرس العقل",
@@ -819,40 +1084,33 @@ async function main() {
     "زراعة ضرسين",
     "إجراء قلبي",
     "علاج كيماوي دعامة",
-    "عملية استئصال الزائدة",
-    "طرد حصوة كلى",
-    "علاج ضغط مزمن",
     "متابعة سكر ربع سنوي",
     "تحاليل دورية",
     "ملف متكامل",
+    "إجراء عيون",
+    "علاج أطفال مزمن",
+    "خطة تعافي كاملة",
   ];
-
   for (let i = 0; i < 12; i++) {
     const patient = patients[i * 5];
     const total = randInt(1000, 15000);
     const paidSoFar = i < 4 ? 0 : i < 8 ? randInt(300, total - 100) : total;
     const status: InstallmentStatus =
       paidSoFar === 0 ? "PENDING" : paidSoFar >= total ? "PAID" : "PARTIAL";
-    const completedAppt = completedAppts.find(
-      (a) => a.patientId === patient.id,
-    );
-
     const plan = await (prisma as any).installmentPlan.create({
       data: {
         clinicId: clinicAlpha.id,
         patientId: patient.id,
-        appointmentId: completedAppt?.id ?? null,
+        appointmentId:
+          completedAppts.find((a) => a.patientId === patient.id)?.id ?? null,
         createdById: rand([drAlpha.id, recAlpha1.id]),
         title: installmentTitles[i],
         totalAmount: total,
         paidAmount: paidSoFar,
         status,
-        notes: i % 3 === 0 ? "مريض ملتزم بالمواعيد" : null,
         createdAt: daysAgo(randInt(5, 60)),
       },
     });
-
-    // Add individual payments
     if (paidSoFar > 0) {
       const numPayments = status === "PAID" ? randInt(2, 4) : randInt(1, 2);
       const perPayment = Math.floor(paidSoFar / numPayments);
@@ -874,11 +1132,7 @@ async function main() {
       }
     }
   }
-  console.log("✅  12 خطة تقسيط");
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 15. رواتب السيكريتيرة
-  // ══════════════════════════════════════════════════════════════════════════
   const salary = await (prisma as any).staffSalary
     .create({
       data: {
@@ -890,7 +1144,6 @@ async function main() {
       },
     })
     .catch(() => null);
-
   if (salary) {
     for (let m = 1; m <= 5; m++) {
       await (prisma as any).salaryPayment
@@ -907,7 +1160,7 @@ async function main() {
         .catch(() => null);
     }
   }
-  console.log("✅  رواتب");
+  console.log("✅  تقسيط ورواتب");
 
   // ══════════════════════════════════════════════════════════════════════════
   // 16. طلبات الاشتراك
@@ -919,13 +1172,12 @@ async function main() {
         planId: planSixMonths.id,
         requestedById: drBeta.id,
         transferPhone: "01234567890",
-        screenshotUrl: "https://placehold.co/400x300?text=Transfer+Screenshot",
+        screenshotUrl: "https://placehold.co/400x300?text=Transfer",
         notes: "تحويل على فودافون كاش",
         status: "PENDING",
       },
     })
     .catch(() => null);
-
   await (prisma as any).subscriptionPaymentRequest
     .create({
       data: {
@@ -933,15 +1185,13 @@ async function main() {
         planId: planYearly.id,
         requestedById: drAlpha.id,
         transferPhone: "01098765432",
-        screenshotUrl:
-          "https://placehold.co/400x300?text=Transfer+Screenshot+2",
+        screenshotUrl: "https://placehold.co/400x300?text=Approved",
         status: "APPROVED",
         reviewedById: superAdmin.id,
         reviewedAt: daysAgo(5),
       },
     })
     .catch(() => null);
-
   await (prisma as any).subscriptionPaymentRequest
     .create({
       data: {
@@ -953,11 +1203,25 @@ async function main() {
         status: "REJECTED",
         reviewedById: superAdmin.id,
         reviewedAt: daysAgo(3),
-        rejectionReason: "الصورة غير واضحة — يرجى إعادة الإرسال",
+        rejectionReason: "الصورة غير واضحة",
       },
     })
     .catch(() => null);
-  console.log("✅  طلبات اشتراك (3)");
+  await (prisma as any).subscriptionPaymentRequest
+    .create({
+      data: {
+        clinicId: clinicDelta.id,
+        planId: planSixMonths.id,
+        requestedById: drDeltaAdmin.id,
+        transferPhone: "01112223344",
+        screenshotUrl: "https://placehold.co/400x300?text=Delta+Payment",
+        status: "APPROVED",
+        reviewedById: superAdmin.id,
+        reviewedAt: daysAgo(2),
+      },
+    })
+    .catch(() => null);
+  console.log("✅  طلبات اشتراك (4)");
 
   // ══════════════════════════════════════════════════════════════════════════
   // 17. إشعارات
@@ -967,42 +1231,42 @@ async function main() {
       userId: drAlpha.id,
       type: "SUBSCRIPTION_APPROVED",
       title: "تم تجديد اشتراكك",
-      body: "تم تجديد اشتراك عيادة ألفا لمدة سنة. اشتغل بكل راحة!",
+      body: "تم تجديد اشتراك عيادة ألفا لمدة سنة.",
       isRead: true,
     },
     {
       userId: drAlpha.id,
       type: "PATIENT_REMINDER",
       title: "تذكير: 6 مرضى اليوم",
-      body: "عندك 6 مرضى محجوزين اليوم. ابدأ يومك!",
-      isRead: false,
-    },
-    {
-      userId: drAlpha.id,
-      type: "INSTALLMENT_PAID",
-      title: "دفعة تقسيط جديدة",
-      body: "دفع المريض محمد أحمد عبدالله 500 جنيه من خطة تقسيطه.",
+      body: "عندك 6 مرضى محجوزين اليوم.",
       isRead: false,
     },
     {
       userId: drBeta.id,
       type: "SUBSCRIPTION_EXPIRED",
       title: "انتهى اشتراكك",
-      body: "انتهى اشتراك عيادة بيتا. جدد الآن لتستمر في استخدام النظام.",
+      body: "انتهى اشتراك عيادة بيتا. جدد الآن.",
       isRead: false,
     },
     {
-      userId: drBeta.id,
-      type: "SUBSCRIPTION_REJECTED",
-      title: "تم رفض طلب الاشتراك",
-      body: "تم رفض طلب تجديد الاشتراك: الصورة غير واضحة.",
+      userId: drDeltaAdmin.id,
+      type: "SUBSCRIPTION_APPROVED",
+      title: "تم تجديد اشتراك المركز",
+      body: "تم تجديد اشتراك مركز دلتا الطبي.",
       isRead: false,
     },
     {
-      userId: drGamma.id,
-      type: "CLINIC_DEACTIVATED",
-      title: "تم إيقاف عيادتك",
-      body: "تم إيقاف عيادة جاما مؤقتاً من قِبل الإدارة.",
+      userId: drDeltaEye.id,
+      type: "SETTLEMENT_RECORDED",
+      title: "تم تسجيل دفعة التسوية",
+      body: "تم تسجيل دفعة إيجار شهر " + prevMonthStr,
+      isRead: false,
+    },
+    {
+      userId: drDeltaPeds.id,
+      type: "SETTLEMENT_PARTIAL",
+      title: "تسوية جزئية مسجلة",
+      body: "تم تسجيل دفعة جزئية 1000 جنيه من تسوية شهر " + prevMonthStr,
       isRead: false,
     },
     {
@@ -1012,15 +1276,21 @@ async function main() {
       body: "تم إضافة مريض جديد لطابور اليوم.",
       isRead: true,
     },
+    {
+      userId: recDelta.id,
+      type: "APPOINTMENT_REMINDER",
+      title: "9 مواعيد اليوم",
+      body: "يوجد 9 مواعيد اليوم موزعة على 3 أطباء.",
+      isRead: false,
+    },
   ];
-
   for (const n of notifications) {
     await (prisma as any).notification.create({ data: n }).catch(() => null);
   }
   console.log("✅  إشعارات");
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 18. شكاوي
+  // 18. شكاوي + تقييمات + audit
   // ══════════════════════════════════════════════════════════════════════════
   const complaints = [
     {
@@ -1029,10 +1299,8 @@ async function main() {
       category: ComplaintCategory.BUG,
       status: ComplaintStatus.RESOLVED,
       title: "خطأ في رفع الملفات",
-      description:
-        "لما بحاول أرفع ملف PDF للمريض بيجيلي خطأ 404 ومش بيترفع. جربت أكتر من مرة.",
-      adminReply:
-        "تم حل المشكلة. كانت مشكلة في الـ Cloudinary config وتم تعديلها. جرب دلوقتي وأخبرنا.",
+      description: "لما بحاول أرفع ملف PDF بيجيلي خطأ 404.",
+      adminReply: "تم حل المشكلة.",
       resolvedAt: daysAgo(5),
       createdAt: daysAgo(10),
     },
@@ -1041,22 +1309,10 @@ async function main() {
       submittedBy: drAlpha.id,
       category: ComplaintCategory.FEATURE,
       status: ComplaintStatus.IN_REVIEW,
-      title: "طلب: تذكيرات واتساب للمرضى",
-      description:
-        "عايز النظام يبعت للمريض رسالة واتساب قبل موعده بيوم تلقائياً. ده هيوفر وقت كتير على السيكريتيرة.",
+      title: "طلب: تذكيرات واتساب",
+      description: "عايز النظام يبعت للمريض رسالة واتساب قبل موعده.",
       adminReply: null,
       createdAt: daysAgo(7),
-    },
-    {
-      clinicId: clinicAlpha.id,
-      submittedBy: drAlpha.id,
-      category: ComplaintCategory.PERFORMANCE,
-      status: ComplaintStatus.OPEN,
-      title: "الموقع بطيء وقت الذروة",
-      description:
-        "لما بيكون عندي 3-4 نوافذ مفتوحة في نفس الوقت الموقع بيبطأ جداً خصوصاً صفحة المرضى.",
-      adminReply: null,
-      createdAt: daysAgo(2),
     },
     {
       clinicId: clinicBeta.id,
@@ -1064,33 +1320,26 @@ async function main() {
       category: ComplaintCategory.BILLING,
       status: ComplaintStatus.RESOLVED,
       title: "الفاتورة مش بتتطبع صح",
-      description:
-        "لما بطبع الفاتورة بيطلع اسم المريض ناقص والتاريخ بيبقى غلط.",
-      adminReply: "تم تحديث نظام الطباعة. جرب دلوقتي.",
+      description: "لما بطبع الفاتورة بيطلع اسم المريض ناقص.",
+      adminReply: "تم تحديث نظام الطباعة.",
       resolvedAt: daysAgo(3),
       createdAt: daysAgo(15),
     },
     {
-      clinicId: clinicBeta.id,
-      submittedBy: drBeta.id,
-      category: ComplaintCategory.UX,
+      clinicId: clinicDelta.id,
+      submittedBy: drDeltaAdmin.id,
+      category: ComplaintCategory.FEATURE,
       status: ComplaintStatus.OPEN,
-      title: "صعوبة في تصفح ملف المريض",
-      description:
-        "لما بدور على روشتة قديمة بتاع مريض لازم أسكرول كتير. محتاج فلتر أو بحث جوه الملف.",
+      title: "طلب: تقرير مقارنة الأطباء",
+      description: "محتاج تقرير يقارن أداء الأطباء الثلاثة شهرياً.",
       adminReply: null,
-      createdAt: daysAgo(1),
+      createdAt: daysAgo(2),
     },
   ];
-
   for (const c of complaints) {
     await (prisma as any).complaint.create({ data: c }).catch(() => null);
   }
-  console.log("✅  شكاوي (5)");
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 19. تقييمات المنصة
-  // ══════════════════════════════════════════════════════════════════════════
   const ratings = [
     {
       clinicId: clinicAlpha.id,
@@ -1099,8 +1348,7 @@ async function main() {
       ease: 5,
       features: 4,
       support: 4,
-      comment:
-        "النظام ممتاز وسهل الاستخدام. بس محتاجين تضيفوا واتساب API وتقارير أكثر تفصيلاً.",
+      comment: "النظام ممتاز وسهل الاستخدام.",
       wouldRefer: true,
     },
     {
@@ -1110,20 +1358,24 @@ async function main() {
       ease: 3,
       features: 3,
       support: 4,
-      comment:
-        "النظام كويس بس في حاجات كتير لسه محتاجة تتعمل. أتمنى يتحسن مع الوقت.",
+      comment: "النظام كويس بس في حاجات كتير لسه محتاجة تتعمل.",
       wouldRefer: false,
     },
+    {
+      clinicId: clinicDelta.id,
+      submittedBy: drDeltaAdmin.id,
+      overall: 5,
+      ease: 5,
+      features: 5,
+      support: 5,
+      comment: "ممتاز جداً خصوصاً دعم أكتر من دكتور في نفس المركز!",
+      wouldRefer: true,
+    },
   ];
-
   for (const r of ratings) {
     await (prisma as any).siteRating.create({ data: r }).catch(() => null);
   }
-  console.log("✅  تقييمات المنصة (2)");
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 20. Audit Logs
-  // ══════════════════════════════════════════════════════════════════════════
   const auditActions = [
     {
       action: "CLINIC_ACTIVATED",
@@ -1131,15 +1383,26 @@ async function main() {
       entityId: clinicAlpha.id,
     },
     {
+      action: "CLINIC_ACTIVATED",
+      entityType: "Clinic",
+      entityId: clinicDelta.id,
+    },
+    {
       action: "CLINIC_DEACTIVATED",
       entityType: "Clinic",
       entityId: clinicGamma.id,
     },
     {
-      action: "CLINIC_STAFF_DEACTIVATED",
-      entityType: "User",
-      entityId: recAlpha2.id,
-      meta: { role: "RECEPTIONIST" },
+      action: "DOCTOR_ADDED",
+      entityType: "ClinicUser",
+      entityId: drDeltaEye.id,
+      meta: { role: "DOCTOR", specialty: "طب وجراحة العيون" },
+    },
+    {
+      action: "DOCTOR_ADDED",
+      entityType: "ClinicUser",
+      entityId: drDeltaPeds.id,
+      meta: { role: "DOCTOR", specialty: "طب الأطفال" },
     },
     {
       action: "SUBSCRIPTION_APPROVED",
@@ -1147,28 +1410,16 @@ async function main() {
       meta: { plan: "YEARLY" },
     },
     {
-      action: "SUBSCRIPTION_REJECTED",
-      entityType: "SubscriptionRequest",
-      meta: { reason: "صورة غير واضحة" },
-    },
-    {
-      action: "PATIENT_CREATED",
-      entityType: "Patient",
-      meta: { code: "P0001" },
-    },
-    {
-      action: "PRESCRIPTION_ISSUED",
-      entityType: "Prescription",
-      meta: { diagnosis: "ارتفاع ضغط الدم" },
+      action: "SETTLEMENT_RECORDED",
+      entityType: "DoctorSettlement",
+      meta: {
+        doctor: "د. هالة فريد النجار",
+        month: prevMonthStr,
+        amount: 8000,
+      },
     },
     { action: "INVOICE_CREATED", entityType: "Invoice", meta: { amount: 450 } },
-    {
-      action: "INSTALLMENT_PAYMENT_ADDED",
-      entityType: "InstallmentPlan",
-      meta: { amount: 500 },
-    },
   ];
-
   for (const log of auditActions) {
     await (prisma as any).auditLog
       .create({
@@ -1181,25 +1432,37 @@ async function main() {
       })
       .catch(() => null);
   }
-  console.log("✅  Audit logs");
+  console.log("✅  شكاوي + تقييمات + audit");
 
   // ══════════════════════════════════════════════════════════════════════════
   // Summary
   // ══════════════════════════════════════════════════════════════════════════
   console.log("\n🎉  الـ Seed اتكمل بنجاح!\n");
-  console.log("┌─────────────────────────────────────────────┐");
-  console.log("│              بيانات الدخول                  │");
-  console.log("├─────────────────────────────────────────────┤");
-  console.log("│ super@demo.test          ← Super Admin       │");
-  console.log("│ dr.alpha@demo.test       ← دكتور ألفا        │");
-  console.log("│ rec1.alpha@demo.test     ← سيكريتيرة ألفا    │");
-  console.log("│ rec2.alpha@demo.test     ← سيكريتيرة (موقوف) │");
-  console.log("│ dr.beta@demo.test        ← دكتور بيتا         │");
-  console.log("│ rec.beta@demo.test       ← سيكريتيرة بيتا    │");
-  console.log("│ dr.gamma@demo.test       ← دكتور عيادة موقوفة│");
-  console.log("├─────────────────────────────────────────────┤");
-  console.log("│ كلمة السر لكل الحسابات: Password123!        │");
-  console.log("└─────────────────────────────────────────────┘");
+  console.log("┌──────────────────────────────────────────────────────────┐");
+  console.log("│                    بيانات الدخول                        │");
+  console.log("├──────────────────────────────────────────────────────────┤");
+  console.log("│ super@demo.test           ← Super Admin                  │");
+  console.log("├──────────────────────────────────────────────────────────┤");
+  console.log("│ [عيادة Alpha — دكتور واحد]                               │");
+  console.log("│ dr.alpha@demo.test        ← DOCTOR_ADMIN (باطنة)         │");
+  console.log("│ rec1.alpha@demo.test      ← RECEPTIONIST (نشطة)          │");
+  console.log("│ rec2.alpha@demo.test      ← RECEPTIONIST (موقوفة)        │");
+  console.log("├──────────────────────────────────────────────────────────┤");
+  console.log("│ [عيادة Beta — اشتراك منتهي]                              │");
+  console.log("│ dr.beta@demo.test         ← DOCTOR_ADMIN (أسنان)         │");
+  console.log("│ rec.beta@demo.test        ← RECEPTIONIST                 │");
+  console.log("├──────────────────────────────────────────────────────────┤");
+  console.log("│ [عيادة Gamma — موقوفة]                                   │");
+  console.log("│ dr.gamma@demo.test        ← DOCTOR_ADMIN (عيون)          │");
+  console.log("├──────────────────────────────────────────────────────────┤");
+  console.log("│ [مركز Delta — Multi-Doctor ← جديد]                       │");
+  console.log("│ dr.delta.admin@demo.test  ← DOCTOR_ADMIN (باطنة, 30%)    │");
+  console.log("│ dr.delta.eye@demo.test    ← DOCTOR (عيون, إيجار 8000)    │");
+  console.log("│ dr.delta.peds@demo.test   ← DOCTOR (أطفال, 25%)          │");
+  console.log("│ rec.delta@demo.test       ← RECEPTIONIST                 │");
+  console.log("├──────────────────────────────────────────────────────────┤");
+  console.log("│ كلمة السر لكل الحسابات: Password123!                     │");
+  console.log("└──────────────────────────────────────────────────────────┘");
 }
 
 main()
