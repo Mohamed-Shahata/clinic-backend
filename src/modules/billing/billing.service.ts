@@ -1220,18 +1220,30 @@ export class BillingService {
 
         const doctorNet = totalRevenue - clinicShare;
 
-        // Check if settlement record already exists
-        const existing = await (this.prisma as any).doctorSettlement.findUnique(
-          {
-            where: {
-              clinicId_doctorUserId_month: {
-                clinicId: user.clinicId,
-                doctorUserId: cu.userId,
-                month: targetMonth,
-              },
-            },
-          },
-        );
+        // Check if settlement record exists — table may not exist yet (pre-migration)
+        let existing: {
+          id: string;
+          status: string;
+          paidAmount: string;
+          paidAt: Date | null;
+          paymentMethod: string | null;
+          notes: string | null;
+        } | null = null;
+
+        try {
+          const rows = await this.prisma.$queryRaw<(typeof existing)[]>`
+            SELECT id, status, "paidAmount"::text, "paidAt", "paymentMethod", notes
+            FROM "DoctorSettlement"
+            WHERE "clinicId" = ${user.clinicId}
+              AND "doctorUserId" = ${cu.userId}
+              AND month = ${targetMonth}
+            LIMIT 1
+          `;
+          existing = rows[0] ?? null;
+        } catch {
+          // Table doesn't exist yet — migration pending
+          existing = null;
+        }
 
         return {
           doctorUserId: cu.userId,
@@ -1325,17 +1337,34 @@ export class BillingService {
         dto.status === "PAID" || dto.status === "PARTIAL" ? new Date() : null,
     };
 
-    return (this.prisma as any).doctorSettlement.upsert({
-      where: {
-        clinicId_doctorUserId_month: {
-          clinicId: user.clinicId,
-          doctorUserId,
-          month,
-        },
-      },
-      update: data,
-      create: data,
-    });
+    // Upsert using raw SQL — works even if Prisma client hasn't regenerated yet
+    const id = `${user.clinicId}-${doctorUserId}-${month}`;
+    await this.prisma.$executeRaw`
+      INSERT INTO "DoctorSettlement" (
+        id, "clinicId", "doctorUserId", month,
+        "totalRevenue", "clinicShare", "doctorNet",
+        status, "paidAmount", "paymentMethod", notes, "paidAt",
+        "createdAt", "updatedAt"
+      ) VALUES (
+        ${id}, ${data.clinicId}, ${data.doctorUserId}, ${data.month},
+        ${data.totalRevenue}, ${data.clinicShare}, ${data.doctorNet},
+        ${data.status}, ${data.paidAmount}, ${data.paymentMethod},
+        ${data.notes}, ${data.paidAt},
+        NOW(), NOW()
+      )
+      ON CONFLICT ("clinicId", "doctorUserId", month) DO UPDATE SET
+        "totalRevenue"  = EXCLUDED."totalRevenue",
+        "clinicShare"   = EXCLUDED."clinicShare",
+        "doctorNet"     = EXCLUDED."doctorNet",
+        status          = EXCLUDED.status,
+        "paidAmount"    = EXCLUDED."paidAmount",
+        "paymentMethod" = EXCLUDED."paymentMethod",
+        notes           = EXCLUDED.notes,
+        "paidAt"        = EXCLUDED."paidAt",
+        "updatedAt"     = NOW()
+    `;
+
+    return { ...data, id };
   }
 }
 
