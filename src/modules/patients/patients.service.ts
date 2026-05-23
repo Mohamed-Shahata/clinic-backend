@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { ClinicRole, Prisma } from "@prisma/client";
 import { PrismaService } from "../../core/database/prisma.service";
 import { RequestUser } from "../../core/auth/types/request-user.type";
@@ -57,7 +61,10 @@ export class PatientsService {
     }
 
     const includeMedicalNotes = role !== ClinicRole.RECEPTIONIST;
-    const pageLimit = Math.min(Math.max(Number.isFinite(limit) ? limit : 50, 1), 100);
+    const pageLimit = Math.min(
+      Math.max(Number.isFinite(limit) ? limit : 50, 1),
+      100,
+    );
 
     // FIX: Replace fixed 200-row cap with cursor pagination for large clinics.
     // FIX: Prisma Client may be stale until migration/generate runs; cast only for new additive field.
@@ -82,12 +89,12 @@ export class PatientsService {
     })) as PatientWithHistory[];
 
     const hasMore = patients.length > pageLimit;
-    const data = patients.slice(0, pageLimit).map((patient) =>
-      this.mergeMedicalHistory(patient, includeMedicalNotes),
-    );
+    const data = patients
+      .slice(0, pageLimit)
+      .map((patient) => this.mergeMedicalHistory(patient, includeMedicalNotes));
     return {
       data,
-      nextCursor: hasMore ? data[data.length - 1]?.id ?? null : null,
+      nextCursor: hasMore ? (data[data.length - 1]?.id ?? null) : null,
     };
   }
 
@@ -116,7 +123,7 @@ export class PatientsService {
         updatedAt: true,
         appointments: {
           where:
-            role === ClinicRole.DOCTOR_ADMIN
+            role === ClinicRole.DOCTOR_ADMIN || role === ClinicRole.DOCTOR
               ? { doctorId: userId, clinicId }
               : { clinicId },
           orderBy: { startsAt: "desc" },
@@ -133,7 +140,9 @@ export class PatientsService {
         prescriptions: includeMedicalNotes
           ? {
               where:
-                role === ClinicRole.DOCTOR_ADMIN ? { doctorId: userId } : {},
+                role === ClinicRole.DOCTOR_ADMIN || role === ClinicRole.DOCTOR
+                  ? { doctorId: userId }
+                  : {},
               orderBy: { issuedAt: "desc" },
               take: 20,
               include: {
@@ -287,7 +296,7 @@ export class PatientsService {
           patient.fullName ?? "",
           patient.phone ?? "",
           patient.dateOfBirth?.toISOString() ?? "",
-          includeMedicalNotes ? merged.medicalNotes ?? "" : "",
+          includeMedicalNotes ? (merged.medicalNotes ?? "") : "",
           patient.createdAt?.toISOString() ?? "",
         ];
       }),
@@ -371,7 +380,12 @@ export class PatientsService {
     };
   }
 
-  private mergeMedicalHistory<T extends { medicalNotes?: string | null; medicalHistory?: Prisma.JsonValue | null }>(
+  private mergeMedicalHistory<
+    T extends {
+      medicalNotes?: string | null;
+      medicalHistory?: Prisma.JsonValue | null;
+    },
+  >(
     patient: T,
     includeMedicalNotes: boolean,
   ): T & {
@@ -382,27 +396,36 @@ export class PatientsService {
       notes: string;
     } | null;
   } {
-    if (!includeMedicalNotes) return patient as T & {
-      medicalHistory?: {
-        chronic: string[];
-        allergies: string[];
-        permanentMeds: string[];
-        notes: string;
-      } | null;
-    };
+    if (!includeMedicalNotes)
+      return patient as T & {
+        medicalHistory?: {
+          chronic: string[];
+          allergies: string[];
+          permanentMeds: string[];
+          notes: string;
+        } | null;
+      };
     const raw =
-      patient.medicalHistory && typeof patient.medicalHistory === "object" && !Array.isArray(patient.medicalHistory)
+      patient.medicalHistory &&
+      typeof patient.medicalHistory === "object" &&
+      !Array.isArray(patient.medicalHistory)
         ? patient.medicalHistory
         : {};
     const record = raw as Record<string, unknown>;
     const structured = {
-      chronic: Array.isArray(record.chronic) ? record.chronic.filter((v): v is string => typeof v === "string") : [],
-      allergies: Array.isArray(record.allergies) ? record.allergies.filter((v): v is string => typeof v === "string") : [],
-      permanentMeds: Array.isArray(record.permanentMeds) ? record.permanentMeds.filter((v): v is string => typeof v === "string") : [],
+      chronic: Array.isArray(record.chronic)
+        ? record.chronic.filter((v): v is string => typeof v === "string")
+        : [],
+      allergies: Array.isArray(record.allergies)
+        ? record.allergies.filter((v): v is string => typeof v === "string")
+        : [],
+      permanentMeds: Array.isArray(record.permanentMeds)
+        ? record.permanentMeds.filter((v): v is string => typeof v === "string")
+        : [],
       notes:
         typeof record.notes === "string"
           ? record.notes
-          : patient.medicalNotes ?? "",
+          : (patient.medicalNotes ?? ""),
     };
     return {
       ...patient,

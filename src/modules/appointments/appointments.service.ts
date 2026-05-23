@@ -49,7 +49,7 @@ export class AppointmentsService {
     );
 
     const doctorFilter =
-      user.role === ClinicRole.DOCTOR_ADMIN
+      user.role === ClinicRole.DOCTOR_ADMIN || user.role === ClinicRole.DOCTOR
         ? { doctorId: user.userId }
         : filterDoctorId
           ? { doctorId: filterDoctorId }
@@ -94,7 +94,9 @@ export class AppointmentsService {
           in: [AppointmentStatus.IN_QUEUE, AppointmentStatus.IN_PROGRESS],
         },
         // FIX: Receptionists need the whole clinic queue; doctors/admins see their own queue.
-        ...(user.role === ClinicRole.RECEPTIONIST ? {} : { doctorId: user.userId }),
+        ...(user.role === ClinicRole.RECEPTIONIST
+          ? {}
+          : { doctorId: user.userId }),
       },
       include: {
         patient: {
@@ -179,7 +181,8 @@ export class AppointmentsService {
     if (!appointment) throw new NotFoundException("Appointment not found");
     await this.normalizeAndEnsureEditableAppointment(appointment);
     if (
-      actor.role === ClinicRole.DOCTOR_ADMIN &&
+      (actor.role === ClinicRole.DOCTOR_ADMIN ||
+        actor.role === ClinicRole.DOCTOR) &&
       appointment.doctorId !== actor.userId
     ) {
       throw new ForbiddenException(
@@ -323,7 +326,8 @@ export class AppointmentsService {
     if (!appointment) throw new NotFoundException("Appointment not found");
     await this.normalizeAndEnsureEditableAppointment(appointment);
     if (
-      actor.role === ClinicRole.DOCTOR_ADMIN &&
+      (actor.role === ClinicRole.DOCTOR_ADMIN ||
+        actor.role === ClinicRole.DOCTOR) &&
       appointment.doctorId !== actor.userId
     ) {
       throw new ForbiddenException(
@@ -405,7 +409,11 @@ export class AppointmentsService {
       select: { workingHours: true },
     });
     const workingHours = clinic?.workingHours;
-    if (!workingHours || typeof workingHours !== "object" || Array.isArray(workingHours)) {
+    if (
+      !workingHours ||
+      typeof workingHours !== "object" ||
+      Array.isArray(workingHours)
+    ) {
       return;
     }
 
@@ -423,7 +431,9 @@ export class AppointmentsService {
     const closeMinutes = this.parseTime(close);
     if (openMinutes === null || closeMinutes === null) return;
     if (startsAt.toDateString() !== endsAt.toDateString()) {
-      throw new BadRequestException("Appointment must start and end on the same day");
+      throw new BadRequestException(
+        "Appointment must start and end on the same day",
+      );
     }
 
     const startMinutes = startsAt.getHours() * 60 + startsAt.getMinutes();
