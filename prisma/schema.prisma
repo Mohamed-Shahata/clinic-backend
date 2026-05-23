@@ -67,6 +67,7 @@ model Clinic {
   serviceCatalog        ServiceCatalog[]
   complaints            Complaint[]
   siteRatings           SiteRating[]
+  doctorSettlements     DoctorSettlement[]
 }
 
 model User {
