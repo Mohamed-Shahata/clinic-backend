@@ -1223,18 +1223,19 @@ export class BillingService {
 
         const doctorNet = totalRevenue - clinicShare;
 
-        // Check if settlement record exists — table may not exist yet (pre-migration)
-        let existing: {
+        type SettlementRow = {
           id: string;
           status: string;
           paidAmount: string;
           paidAt: Date | null;
           paymentMethod: string | null;
           notes: string | null;
-        } | null = null;
+        };
+
+        let existing: SettlementRow | null = null;
 
         try {
-          const rows = await this.prisma.$queryRaw<(typeof existing)[]>`
+          const rows = await this.prisma.$queryRaw<SettlementRow[]>`
             SELECT id, status, "paidAmount"::text, "paidAt", "paymentMethod", notes
             FROM "DoctorSettlement"
             WHERE "clinicId" = ${user.clinicId}
