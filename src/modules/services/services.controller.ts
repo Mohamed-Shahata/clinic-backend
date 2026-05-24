@@ -22,20 +22,20 @@ export class ServicesController {
 
   // Both roles can view the service catalog (needed when creating invoices)
   @Get()
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   findAll(@CurrentUser() u: RequestUser) {
     return this.svc.findAll(u.clinicId!);
   }
 
   // Only DOCTOR_ADMIN can manage the catalog
   @Post()
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   create(@CurrentUser() u: RequestUser, @Body() dto: CreateServiceDto) {
     return this.svc.create(u.clinicId!, dto);
   }
 
   @Patch(":id")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   update(
     @CurrentUser() u: RequestUser,
     @Param("id") id: string,
@@ -45,7 +45,7 @@ export class ServicesController {
   }
 
   @Delete(":id")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   remove(@CurrentUser() u: RequestUser, @Param("id") id: string) {
     return this.svc.remove(u.clinicId!, id);
   }

@@ -59,7 +59,7 @@ export class PrescriptionsController {
   }
 
   @Post()
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   @Permissions(Permission.CREATE_PRESCRIPTION)
   create(@CurrentUser() user: RequestUser, @Body() dto: CreatePrescriptionDto) {
     return this.prescriptionsService.create(user, dto);
@@ -68,13 +68,13 @@ export class PrescriptionsController {
   // SkipThrottle on all catalog & template reads — these are called on every
   // prescription form load and do NOT pose abuse risk (auth-gated + cached).
   @Get("catalog/medications")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   listMedications(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     return this.prescriptionsService.listMedicationCatalog(user, q);
   }
 
   @Post("catalog/medications")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   createMedication(
     @CurrentUser() user: RequestUser,
     @Body() dto: CreateMedicationCatalogDto,
@@ -83,7 +83,7 @@ export class PrescriptionsController {
   }
 
   @Patch("catalog/medications/:id")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   updateMedication(
     @CurrentUser() user: RequestUser,
     @Param("id") id: string,
@@ -93,19 +93,19 @@ export class PrescriptionsController {
   }
 
   @Delete("catalog/medications/:id")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   deleteMedication(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.prescriptionsService.deleteMedicationCatalog(user, id);
   }
 
   @Get("catalog/imaging")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   listImaging(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     return this.prescriptionsService.listImagingCatalog(user, q);
   }
 
   @Post("catalog/imaging")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   createImaging(
     @CurrentUser() user: RequestUser,
     @Body() dto: CreateImagingCatalogDto,
@@ -114,7 +114,7 @@ export class PrescriptionsController {
   }
 
   @Patch("catalog/imaging/:id")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   updateImaging(
     @CurrentUser() user: RequestUser,
     @Param("id") id: string,
@@ -124,7 +124,7 @@ export class PrescriptionsController {
   }
 
   @Delete("catalog/imaging/:id")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   deleteImaging(@CurrentUser() user: RequestUser, @Param("id") id: string) {
     return this.prescriptionsService.deleteImagingCatalog(user, id);
   }

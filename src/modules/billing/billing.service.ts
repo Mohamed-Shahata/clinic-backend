@@ -799,7 +799,10 @@ export class BillingService {
 
   async doctorMonthlyStats(user: RequestUser) {
     if (!user.clinicId) throw new ForbiddenException("Clinic context required");
-    if (user.role !== ClinicRole.DOCTOR_ADMIN)
+    if (
+      user.role !== ClinicRole.DOCTOR_ADMIN &&
+      user.role !== ClinicRole.DOCTOR
+    )
       throw new ForbiddenException("Doctor access required");
 
     const now = new Date();
@@ -1169,11 +1172,11 @@ export class BillingService {
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       })();
 
-    // Get all doctors in clinic with their payment policy
+    // Get all doctors in clinic with their payment policy — exclude DOCTOR_ADMIN
     const doctors = await this.prisma.clinicUser.findMany({
       where: {
         clinicId: user.clinicId,
-        role: { in: [ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR] },
+        role: ClinicRole.DOCTOR,
         isActive: true,
       },
       include: { user: true },

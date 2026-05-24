@@ -158,7 +158,7 @@ export class BillingController {
   }
 
   @Get("doctor-monthly-stats")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   doctorMonthlyStats(@CurrentUser() user: RequestUser) {
     return this.billingService.doctorMonthlyStats(user);
   }
