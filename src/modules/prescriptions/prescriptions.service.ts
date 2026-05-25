@@ -36,7 +36,10 @@ export class PrescriptionsService {
 
   async create(user: RequestUser, dto: CreatePrescriptionDto) {
     if (!user.clinicId) throw new ForbiddenException("Clinic context required");
-    if (user.role !== ClinicRole.DOCTOR_ADMIN) {
+    if (
+      user.role !== ClinicRole.DOCTOR_ADMIN &&
+      user.role !== ClinicRole.DOCTOR
+    ) {
       throw new ForbiddenException("Doctor access required");
     }
 
@@ -95,7 +98,10 @@ export class PrescriptionsService {
 
   private requireDoctorCatalog(user: RequestUser) {
     if (!user.clinicId) throw new ForbiddenException("Clinic context required");
-    if (user.role !== ClinicRole.DOCTOR_ADMIN) {
+    if (
+      user.role !== ClinicRole.DOCTOR_ADMIN &&
+      user.role !== ClinicRole.DOCTOR
+    ) {
       throw new ForbiddenException("Doctor access required");
     }
   }

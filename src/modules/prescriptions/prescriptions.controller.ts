@@ -49,7 +49,7 @@ export class PrescriptionsController {
   constructor(private readonly prescriptionsService: PrescriptionsService) {}
 
   @Get("patient/:patientId")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   @Permissions(Permission.VIEW_PATIENT_HISTORY)
   listByPatient(
     @CurrentUser() user: RequestUser,
@@ -130,7 +130,7 @@ export class PrescriptionsController {
   }
 
   @Get("catalog/tests")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   listTests(@CurrentUser() user: RequestUser, @Query("q") q?: string) {
     // Tests are stored as part of the medications catalog (requestedTests field in prescriptions)
     // Return empty catalog — front-end builds test suggestions from previous prescriptions
@@ -138,13 +138,13 @@ export class PrescriptionsController {
   }
 
   @Get("template")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   getTemplate(@CurrentUser() user: RequestUser) {
     return this.prescriptionsService.getPrescriptionTemplate(user);
   }
 
   @Post("template")
-  @Roles(ClinicRole.DOCTOR_ADMIN)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR)
   saveTemplate(@CurrentUser() user: RequestUser, @Body() dto: SaveTemplateDto) {
     return this.prescriptionsService.savePrescriptionTemplate(user, dto);
   }

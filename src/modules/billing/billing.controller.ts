@@ -131,7 +131,7 @@ export class BillingController {
   }
 
   @Get("invoices")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.VIEW_BILLING, Permission.VIEW_CLINIC_FINANCIALS)
   list(
     @CurrentUser() user: RequestUser,
@@ -170,14 +170,14 @@ export class BillingController {
   }
 
   @Post("invoices")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.CREATE_INVOICE)
   create(@CurrentUser() user: RequestUser, @Body() dto: CreateInvoiceDto) {
     return this.billingService.create(user, dto);
   }
 
   @Patch("invoices/:invoiceId")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.UPDATE_INVOICE)
   update(
     @CurrentUser() user: RequestUser,
@@ -188,7 +188,7 @@ export class BillingController {
   }
 
   @Delete("invoices/:invoiceId")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.DELETE_INVOICE)
   delete(
     @CurrentUser() user: RequestUser,

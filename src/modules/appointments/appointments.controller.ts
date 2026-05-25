@@ -25,7 +25,7 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Get()
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.VIEW_SCHEDULE, Permission.VIEW_OWN_SCHEDULE)
   list(
     @CurrentUser() user: RequestUser,
@@ -37,14 +37,14 @@ export class AppointmentsController {
   }
 
   @Get("queue")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.VIEW_QUEUE, Permission.VIEW_SCHEDULE)
   queue(@CurrentUser() user: RequestUser) {
     return this.appointmentsService.queue(user);
   }
 
   @Post()
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.CREATE_APPOINTMENT)
   create(@CurrentUser() user: RequestUser, @Body() dto: CreateAppointmentDto) {
     if (!user.clinicId) throw new ForbiddenException("Clinic context required");
@@ -52,7 +52,7 @@ export class AppointmentsController {
   }
 
   @Patch(":appointmentId")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.UPDATE_APPOINTMENT)
   update(
     @CurrentUser() user: RequestUser,
@@ -69,7 +69,7 @@ export class AppointmentsController {
   }
 
   @Patch(":appointmentId/status")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.UPDATE_APPOINTMENT, Permission.CREATE_PRESCRIPTION)
   updateStatus(
     @CurrentUser() user: RequestUser,
@@ -86,7 +86,7 @@ export class AppointmentsController {
   }
 
   @Delete(":appointmentId")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.CANCEL_APPOINTMENT)
   delete(
     @CurrentUser() user: RequestUser,

@@ -93,12 +93,19 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
 
   [DOCTOR_ROLE]: [
     Permission.VIEW_OWN_SCHEDULE,
+    Permission.VIEW_SCHEDULE,
+    Permission.CREATE_PATIENT,
+    Permission.CREATE_APPOINTMENT,
+    Permission.UPDATE_APPOINTMENT,
+    Permission.CANCEL_APPOINTMENT,
     Permission.CREATE_PRESCRIPTION,
     Permission.UPDATE_PRESCRIPTION,
     Permission.VIEW_PATIENT_HISTORY,
     Permission.REQUEST_TESTS,
     Permission.VIEW_PATIENT_DATA,
     Permission.CREATE_INVOICE,
+    Permission.UPDATE_INVOICE,
+    Permission.DELETE_INVOICE,
     Permission.VIEW_BILLING,
   ],
 
