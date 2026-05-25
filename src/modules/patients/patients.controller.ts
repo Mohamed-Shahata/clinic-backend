@@ -33,7 +33,7 @@ export class PatientsController {
   ) {}
 
   @Get()
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.VIEW_PATIENT_DATA, Permission.VIEW_SCHEDULE)
   async list(
     @CurrentUser() user: RequestUser,
@@ -64,14 +64,14 @@ export class PatientsController {
   }
 
   @Get("similar")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.VIEW_PATIENT_DATA)
   async similar(@CurrentUser() user: RequestUser, @Query("name") name: string) {
     return this.patientsService.findSimilar(user, name ?? "");
   }
 
   @Get(":patientId")
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.VIEW_PATIENT_DATA, Permission.VIEW_PATIENT_HISTORY)
   async details(
     @CurrentUser() user: RequestUser,
@@ -81,7 +81,7 @@ export class PatientsController {
   }
 
   @Post()
-  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.RECEPTIONIST)
+  @Roles(ClinicRole.DOCTOR_ADMIN, ClinicRole.DOCTOR, ClinicRole.RECEPTIONIST)
   @Permissions(Permission.CREATE_PATIENT)
   async create(
     @CurrentUser() user: RequestUser,
